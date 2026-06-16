@@ -46,6 +46,7 @@ def gather_cached(
     no_discover: bool,
     exclude_noise: bool,
     no_commits: bool,
+    last_done: bool,
 ) -> ReportData:
     cfg = load_config(config_path)
     if engineer_names:
@@ -54,7 +55,7 @@ def gather_cached(
     opts = GatherOptions(
         since=since, until=until, tz=tz, deep=deep, max_age=max_age,
         commits_source=source, no_discover=no_discover,
-        exclude_noise=exclude_noise, no_commits=no_commits,
+        exclude_noise=exclude_noise, no_commits=no_commits, last_done=last_done,
     )
     return gather_report(cfg, opts)
 
@@ -63,6 +64,7 @@ def summary_frame(data: ReportData) -> pd.DataFrame:
     rows = [{
         "Engineer": e.name,
         "Selesai": e.completed,
+        **({"Selesai terakhir": e.last_done_date or "—"} if data.has_last_done else {}),
         "Lead median (hari)": e.lead_median,
         "Cycle median (hari)": e.cycle_median if e.cycle_times_days else None,
         "Tracked (jam)": e.tracked_hours,
@@ -113,6 +115,7 @@ max_age_in = st.sidebar.number_input("Abaikan task basi > N hari (0 = nonaktif)"
 source = st.sidebar.selectbox("Sumber commit", ["auto", "gitlab", "db", "none"], index=0)
 no_discover = st.sidebar.toggle("Jangan auto-discover repo", value=False)
 exclude_noise = st.sidebar.toggle("Filter file noise (+/- baris)", value=False, help="Lebih lambat: ambil diff tiap commit")
+last_done = st.sidebar.toggle("Tanggal selesai terakhir", value=False, help="Query ekstra: kapan tiap engineer terakhir menutup task (lintas periode)")
 
 if st.sidebar.button("🔄 Refresh data", width="stretch"):
     gather_cached.clear()
@@ -129,7 +132,7 @@ try:
     data = gather_cached(
         CONFIG_PATH, tuple(sel_names),
         since_d.isoformat(), until_d.isoformat(), float(tz),
-        deep, (max_age_in or None), source, no_discover, exclude_noise, source == "none",
+        deep, (max_age_in or None), source, no_discover, exclude_noise, source == "none", last_done,
     )
 except Exception as exc:  # noqa: BLE001 — tampilkan error apa pun ke UI
     st.error(f"Gagal menarik data: {exc}")

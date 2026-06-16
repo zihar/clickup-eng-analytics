@@ -4,6 +4,7 @@ Jalankan: ./.venv/bin/python tests/smoke_test.py
 """
 
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -244,7 +245,29 @@ assert resolve_commit_source("db", _cfg) == "none"      # db_dsn kosong
 assert resolve_commit_source("none", _cfg) == "none"
 assert GatherOptions().days == 30 and GatherOptions().commits_source == "auto"
 
+# --- last_done: tanggal task terakhir selesai (lintas periode) ---
+data_ld = build_report_data(
+    tasks,
+    id_to_name=id_to_name,
+    target_ids={ID_BUDI, ID_SARI},
+    time_in_status=None,
+    time_entries=[],
+    since="2024-05-01",
+    until="2024-05-31",
+    tz_offset=7,
+    last_done_ms={ID_BUDI: BASE + 100 * DAY},  # ~Agustus 2024
+    last_done_lookback_days=365,
+)
+ld = {e.name: e for e in data_ld.engineers}
+_expected_ld = datetime.fromtimestamp((BASE + 100 * DAY) / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+assert data_ld.has_last_done is True
+assert ld["Budi"].last_done_date == _expected_ld, ld["Budi"].last_done_date
+assert ld["Sari"].last_done_date is None, ld["Sari"].last_done_date
+md_ld = render_markdown(data_ld, generated_at="2024-08-31 09:00 WIB")
+assert "Selesai terakhir" in md_ld and _expected_ld in md_ld
+
 md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
+assert "Selesai terakhir" not in md  # kolom hanya muncul bila fitur aktif
 assert "# Laporan Produktivitas Engineering" in md
 assert "Budi" in md and "Sari" in md
 assert "Bottleneck" in md

@@ -80,6 +80,16 @@ class EngineerStats:
     commit_deletions: int = 0
     active_days: int = 0
     repos_touched: int = 0
+    # Tanggal task terakhir ber-status done (epoch ms), lintas periode bila diaktifkan.
+    last_done_ms: int | None = None
+
+    @property
+    def last_done_date(self) -> str | None:
+        """Tanggal 'YYYY-MM-DD' task terakhir selesai, atau None bila tak ada data."""
+        if self.last_done_ms is None:
+            return None
+        from datetime import datetime, timezone
+        return datetime.fromtimestamp(self.last_done_ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
 
     @property
     def lead_median(self) -> float:
@@ -148,6 +158,8 @@ class ReportData:
     commit_synced_at: str | None = None
     commit_source: str | None = None
     commit_noise_filtered: bool = False
+    has_last_done: bool = False
+    last_done_lookback_days: int | None = None
 
 
 # --------------------------------------------------------------------- builder
@@ -167,6 +179,8 @@ def build_report_data(
     commit_synced_at: str | None = None,
     commit_source: str | None = None,
     commit_noise_filtered: bool = False,
+    last_done_ms: dict[int, int] | None = None,
+    last_done_lookback_days: int | None = None,
 ) -> ReportData:
     stats: dict[int, EngineerStats] = {
         uid: EngineerStats(engineer_id=uid, name=id_to_name.get(uid, str(uid)))
@@ -246,6 +260,12 @@ def build_report_data(
                 s.active_days = cs.active_days
                 s.repos_touched = cs.repos
 
+    # Tanggal task terakhir selesai (lintas periode), bila disediakan pipeline.
+    if last_done_ms:
+        for uid, ms in last_done_ms.items():
+            if uid in stats:
+                stats[uid].last_done_ms = ms
+
     # Buang status terminal (mis. Done/Drop) yang lolos lewat current_status bertype None.
     for name in terminal_names:
         status_flow.pop(name, None)
@@ -270,6 +290,8 @@ def build_report_data(
         commit_synced_at=commit_synced_at,
         commit_source=commit_source,
         commit_noise_filtered=commit_noise_filtered,
+        has_last_done=last_done_ms is not None,
+        last_done_lookback_days=last_done_lookback_days,
     )
 
 

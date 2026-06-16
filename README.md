@@ -106,6 +106,7 @@ python -m engineering_productivity --since 2026-05-01 --until 2026-05-31 --deep 
 | `--days` | `30` | Lookback bila `--since` kosong |
 | `--tz` | `7` | Offset zona waktu untuk bucket minggu (7 = WIB) |
 | `--deep` | off | Ambil `time_in_status` per task → cycle time & bottleneck |
+| `--last-done` | off | Tambah kolom *Selesai terakhir* (kapan tiap engineer terakhir menutup task, lintas periode) |
 | `-o`, `--output` | `reports/report.md` | File output |
 
 ## Dashboard interaktif

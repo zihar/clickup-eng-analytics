@@ -34,6 +34,11 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
                 f"{data.commit_through} belum masuk DB — jalankan ulang ETL squad-scorecard"
             )
         lines.append(note)
+    if data.has_last_done:
+        lines.append(
+            f"- **Kolom 'Selesai terakhir':** tanggal task terakhir berstatus done per engineer "
+            f"(lookback {data.last_done_lookback_days} hari; '—' = tak ada di rentang itu)"
+        )
     lines.append(f"- **Dibuat:** {generated_at}")
     lines.append("")
     lines.append(
@@ -42,29 +47,32 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
     )
     lines.append("")
 
-    _summary_table(lines, data.engineers)
+    _summary_table(lines, data.engineers, data.has_last_done)
     _throughput_table(lines, data)
     if data.has_commit_data:
         _commit_table(lines, data.engineers, data.commit_source, data.commit_noise_filtered)
         _quadrant_table(lines, data.engineers)
     if data.deep:
         _status_flow_table(lines, data)
-    _per_engineer_detail(lines, data.engineers, data.has_commit_data)
+    _per_engineer_detail(lines, data.engineers, data.has_commit_data, data.has_last_done)
 
     return "\n".join(lines) + "\n"
 
 
-def _summary_table(lines: list[str], engineers: list[EngineerStats]) -> None:
+def _summary_table(lines: list[str], engineers: list[EngineerStats], has_last_done: bool = False) -> None:
     lines.append("## Ringkasan per Engineer")
     lines.append("")
+    last_col = " Selesai terakhir |" if has_last_done else ""
+    last_sep = "--:|" if has_last_done else ""
     lines.append(
-        "| Engineer | Selesai | Lead time median (hari) | Cycle time median (hari) "
+        "| Engineer | Selesai |" + last_col + " Lead time median (hari) | Cycle time median (hari) "
         "| Tracked (jam) | Estimasi (jam) | Akurasi estimasi |"
     )
-    lines.append("|---|--:|--:|--:|--:|--:|--:|")
+    lines.append("|---|--:|" + last_sep + "--:|--:|--:|--:|--:|")
     for e in engineers:
+        last_cell = f" {e.last_done_date or '—'} |" if has_last_done else ""
         lines.append(
-            f"| {e.name} | {e.completed} | {_fmt(e.lead_median)} | "
+            f"| {e.name} | {e.completed} |" + last_cell + f" {_fmt(e.lead_median)} | "
             f"{_fmt(e.cycle_median) if e.cycle_times_days else '—'} | "
             f"{_fmt(e.tracked_hours)} | {_fmt(e.estimate_hours)} | "
             f"{_fmt(e.estimate_accuracy, '×')} |"
@@ -171,13 +179,15 @@ def _status_flow_table(lines: list[str], data: ReportData) -> None:
     lines.append("")
 
 
-def _per_engineer_detail(lines: list[str], engineers: list[EngineerStats], has_commit: bool) -> None:
+def _per_engineer_detail(lines: list[str], engineers: list[EngineerStats], has_commit: bool, has_last_done: bool = False) -> None:
     lines.append("## Detail per Engineer")
     lines.append("")
     for e in engineers:
         lines.append(f"### {e.name}")
         lines.append("")
         lines.append(f"- Task selesai: **{e.completed}**")
+        if has_last_done:
+            lines.append(f"- Task terakhir selesai: {e.last_done_date or '—'}")
         lines.append(f"- Lead time: median {_fmt(e.lead_median)} hari · rata-rata {_fmt(e.lead_mean)} hari")
         if e.cycle_times_days:
             lines.append(f"- Cycle time (waktu aktif dikerjakan): median {_fmt(e.cycle_median)} hari")

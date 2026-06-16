@@ -33,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help="(GitLab) jangan auto-discover repo per engineer; pakai daftar gitlab.projects saja")
     p.add_argument("--exclude-noise", action="store_true",
                    help="(GitLab) hitung +/- baris tanpa file noise (vendor/lock/generated); ambil diff tiap commit (lambat)")
+    p.add_argument("--last-done", action="store_true",
+                   help="Tampilkan tanggal task terakhir selesai per engineer (query ekstra lintas periode)")
+    p.add_argument("--last-done-lookback", type=int, default=365, metavar="HARI",
+                   help="Batas mundur pencarian last-done (default 365)")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
     p.add_argument("--list-teams", action="store_true", help="Tampilkan workspace/team yang bisa diakses lalu keluar")
     p.add_argument("--list-members", action="store_true", help="Tampilkan member workspace lalu keluar")
@@ -73,6 +77,8 @@ def main(argv: list[str] | None = None) -> int:
             no_discover=args.no_discover,
             exclude_noise=args.exclude_noise,
             no_commits=args.no_commits,
+            last_done=args.last_done,
+            last_done_lookback=args.last_done_lookback,
         )
         data = gather_report(config, opts, client=client, progress=lambda m: print(m, file=sys.stderr))
 
