@@ -74,6 +74,12 @@ class EngineerStats:
     estimate_ms: int = 0
     tracked_ms: int = 0
     per_week: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # Aktivitas commit GitLab (dari DB squad-scorecard, join via id ClickUp).
+    commits: int = 0
+    commit_additions: int = 0
+    commit_deletions: int = 0
+    active_days: int = 0
+    repos_touched: int = 0
 
     @property
     def lead_median(self) -> float:
@@ -137,6 +143,7 @@ class ReportData:
     tz_offset: float
     max_age_days: int | None = None
     filtered_stale: int = 0
+    has_commit_data: bool = False
 
 
 # --------------------------------------------------------------------- builder
@@ -151,6 +158,7 @@ def build_report_data(
     until: str,
     tz_offset: float,
     max_age_days: int | None = None,
+    commit_stats: dict | None = None,
 ) -> ReportData:
     stats: dict[int, EngineerStats] = {
         uid: EngineerStats(engineer_id=uid, name=id_to_name.get(uid, str(uid)))
@@ -219,6 +227,17 @@ def build_report_data(
         if dur > 0:  # abaikan timer berjalan / nilai negatif
             stats[uid].tracked_ms += dur
 
+    # Gabungkan aktivitas commit GitLab (join via id ClickUp).
+    if commit_stats:
+        for uid, cs in commit_stats.items():
+            if uid in stats:
+                s = stats[uid]
+                s.commits = cs.commits
+                s.commit_additions = cs.additions
+                s.commit_deletions = cs.deletions
+                s.active_days = cs.active_days
+                s.repos_touched = cs.repos
+
     # Buang status terminal (mis. Done/Drop) yang lolos lewat current_status bertype None.
     for name in terminal_names:
         status_flow.pop(name, None)
@@ -238,6 +257,7 @@ def build_report_data(
         tz_offset=tz_offset,
         max_age_days=max_age_days,
         filtered_stale=filtered_stale,
+        has_commit_data=commit_stats is not None,
     )
 
 

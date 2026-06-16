@@ -9,6 +9,12 @@ token: ""
 # yang bisa diakses token-mu (jalankan dengan --list-teams untuk melihat daftarnya).
 team_id: ""
 
+# (Opsional) Sumber aktivitas commit GitLab dari DB squad-scorecard.
+# Tabel engineer_commit_days dipakai; engineer_id-nya = id user ClickUp.
+# Bisa juga lewat env SCORECARD_DSN. Kosongkan kalau tak dipakai.
+db:
+  dsn: ""  # contoh: postgres://user:pass@localhost:5432/scorecard?sslmode=disable
+
 # Daftar engineer yang mau dianalisis. Boleh pakai email ATAU id numerik.
 # Email akan di-resolve otomatis ke id lewat daftar member workspace.
 engineers:

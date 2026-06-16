@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from clickup_analytics.db import CommitStats
 from clickup_analytics.metrics import build_report_data
 from clickup_analytics.report import render_markdown
 
@@ -81,6 +82,11 @@ time_entries = [
     {"user": {"id": 999}, "duration": str(3_600_000)},  # bukan target -> diabaikan
 ]
 
+commit_stats = {
+    ID_BUDI: CommitStats(commits=20, additions=100, deletions=10, active_days=5, repos=2),
+    999: CommitStats(commits=99),  # bukan target -> diabaikan
+}
+
 data = build_report_data(
     tasks,
     id_to_name=id_to_name,
@@ -90,6 +96,7 @@ data = build_report_data(
     since="2024-05-01",
     until="2024-05-31",
     tz_offset=7,
+    commit_stats=commit_stats,
 )
 
 # --- Asersi inti ---
@@ -112,6 +119,11 @@ flow_names = {b.status for b in data.status_flow}
 assert "Done" not in flow_names, flow_names
 # Estimasi akurasi Budi: tracked 10j / estimate 12j = 0.83
 assert by_name["Budi"].estimate_accuracy == 0.83, by_name["Budi"].estimate_accuracy
+# Commit GitLab dari DB: Budi 20 commit / 5 hari aktif / 2 repo; Sari 0.
+assert data.has_commit_data is True
+assert by_name["Budi"].commits == 20 and by_name["Budi"].active_days == 5, by_name["Budi"].commits
+assert by_name["Budi"].repos_touched == 2, by_name["Budi"].repos_touched
+assert by_name["Sari"].commits == 0, by_name["Sari"].commits
 
 # --- Filter --max-age: t3 (lead 5 hari) harus diabaikan bila max_age=3 ---
 data_capped = build_report_data(
@@ -134,6 +146,7 @@ md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
 assert "# Laporan Produktivitas Engineering" in md
 assert "Budi" in md and "Sari" in md
 assert "Bottleneck" in md
+assert "Aktivitas Commit" in md
 
 out = Path(__file__).resolve().parent / "sample_report.md"
 out.write_text(md, encoding="utf-8")

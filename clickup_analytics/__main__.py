@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .client import ClickUpClient, ClickUpError
 from .config import Config, ConfigError, load_config
+from .db import DBError, fetch_commit_stats
 from .metrics import build_report_data
 from .report import render_markdown
 
@@ -61,6 +62,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tz", type=float, default=7.0, help="Offset zona waktu untuk bucket minggu (default 7 = WIB)")
     p.add_argument("--deep", action="store_true", help="Ambil time_in_status per task (cycle time & bottleneck; lebih banyak API call)")
     p.add_argument("--max-age", type=int, default=None, metavar="HARI", help="Abaikan task basi: lead time (dibuat->selesai) lebih dari N hari")
+    p.add_argument("--no-commits", action="store_true", help="Lewati aktivitas commit GitLab dari DB squad-scorecard")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
     p.add_argument("--list-teams", action="store_true", help="Tampilkan workspace/team yang bisa diakses lalu keluar")
     p.add_argument("--list-members", action="store_true", help="Tampilkan member workspace lalu keluar")
@@ -149,6 +151,17 @@ def main(argv: list[str] | None = None) -> int:
             )
             time_entries = []
 
+        commit_stats = None
+        if config.db_dsn and not args.no_commits:
+            print("[*] Menarik aktivitas commit dari DB squad-scorecard ...")
+            try:
+                commit_stats = fetch_commit_stats(
+                    config.db_dsn, sorted(target_ids), since_str, until_str
+                )
+            except DBError as exc:
+                print(f"    [!] Commit dilewati (DB tak terjangkau): {exc}", file=sys.stderr)
+                commit_stats = None
+
         data = build_report_data(
             tasks,
             id_to_name=id_to_name,
@@ -159,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
             until=until_str,
             tz_offset=args.tz,
             max_age_days=args.max_age,
+            commit_stats=commit_stats,
         )
 
         markdown = render_markdown(data, generated_at=now.strftime("%Y-%m-%d %H:%M %Z"))

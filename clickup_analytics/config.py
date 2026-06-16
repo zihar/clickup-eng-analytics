@@ -23,6 +23,7 @@ class Config:
     token: str
     engineers: list[Engineer]
     team_id: str | None = None
+    db_dsn: str | None = None
     extra: dict = field(default_factory=dict)
 
     @property
@@ -72,8 +73,14 @@ def load_config(path: str | Path) -> Config:
             raise ConfigError(f"Engineer '{name}' harus punya 'email' atau 'id'.")
         engineers.append(eng)
 
+    db_section = raw.get("db") or {}
+    db_dsn = os.environ.get("SCORECARD_DSN") or db_section.get("dsn") or None
+    if db_dsn:
+        db_dsn = db_dsn.strip() or None
+
     return Config(
         token=token,
         engineers=engineers,
         team_id=str(raw["team_id"]) if raw.get("team_id") else None,
+        db_dsn=db_dsn,
     )

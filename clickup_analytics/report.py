@@ -34,9 +34,11 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
 
     _summary_table(lines, data.engineers)
     _throughput_table(lines, data)
+    if data.has_commit_data:
+        _commit_table(lines, data.engineers)
     if data.deep:
         _status_flow_table(lines, data)
-    _per_engineer_detail(lines, data.engineers)
+    _per_engineer_detail(lines, data.engineers, data.has_commit_data)
 
     return "\n".join(lines) + "\n"
 
@@ -76,6 +78,25 @@ def _throughput_table(lines: list[str], data: ReportData) -> None:
     lines.append("")
 
 
+def _commit_table(lines: list[str], engineers: list[EngineerStats]) -> None:
+    lines.append("## Aktivitas Commit (GitLab)")
+    lines.append("")
+    lines.append(
+        "Dari DB squad-scorecard. **Hari aktif** (jumlah hari ada commit) lebih bermakna "
+        "daripada total commit yang mudah diakali. Bandingkan dengan kolom *Selesai* di "
+        "ringkasan: timpang besar = task ClickUp tidak mencerminkan kerja kode (atau sebaliknya)."
+    )
+    lines.append("")
+    lines.append("| Engineer | Commits | Hari aktif | Repo | +Baris | -Baris |")
+    lines.append("|---|--:|--:|--:|--:|--:|")
+    for e in sorted(engineers, key=lambda x: x.commits, reverse=True):
+        lines.append(
+            f"| {e.name} | {e.commits} | {e.active_days} | {e.repos_touched} "
+            f"| {e.commit_additions} | {e.commit_deletions} |"
+        )
+    lines.append("")
+
+
 def _status_flow_table(lines: list[str], data: ReportData) -> None:
     lines.append("## Status Flow / Bottleneck")
     lines.append("")
@@ -97,7 +118,7 @@ def _status_flow_table(lines: list[str], data: ReportData) -> None:
     lines.append("")
 
 
-def _per_engineer_detail(lines: list[str], engineers: list[EngineerStats]) -> None:
+def _per_engineer_detail(lines: list[str], engineers: list[EngineerStats], has_commit: bool) -> None:
     lines.append("## Detail per Engineer")
     lines.append("")
     for e in engineers:
@@ -108,6 +129,11 @@ def _per_engineer_detail(lines: list[str], engineers: list[EngineerStats]) -> No
         if e.cycle_times_days:
             lines.append(f"- Cycle time (waktu aktif dikerjakan): median {_fmt(e.cycle_median)} hari")
         lines.append(f"- Time tracked: {_fmt(e.tracked_hours)} jam (estimasi {_fmt(e.estimate_hours)} jam)")
+        if has_commit:
+            lines.append(
+                f"- Commit GitLab: {e.commits} commit · {e.active_days} hari aktif · "
+                f"{e.repos_touched} repo"
+            )
         if e.estimate_accuracy is not None:
             arah = "lebih lama dari" if e.estimate_accuracy > 1 else "lebih cepat dari"
             lines.append(f"- Akurasi estimasi: {e.estimate_accuracy}× ({arah} estimasi)")
