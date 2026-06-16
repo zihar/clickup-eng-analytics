@@ -67,6 +67,10 @@ Secara default tool **auto-discover** repo tiap engineer (lewat push events GitL
 digabung dengan `projects` seed — jadi repo yang tidak terdaftar (mis. `argocd/*`)
 ikut tertangkap. Matikan dengan `--no-discover` kalau ingin pakai `projects` saja.
 
+Flag `--exclude-noise` menghitung ulang +/- baris **tanpa file noise** (vendor, lockfile,
+generated, dll — lihat `DEFAULT_NOISE_PATTERNS`; tambah lewat `gitlab.noise_patterns`).
+Ini mengambil diff tiap commit (1 call/commit) sehingga **lebih lambat**, jadi opsional.
+
 **B. DB squad-scorecard** — cepat tapi bergantung kesegaran ETL. Isi `db.dsn` atau env `SCORECARD_DSN`:
 
 ```yaml

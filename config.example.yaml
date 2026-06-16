@@ -17,8 +17,9 @@ team_id: ""
 gitlab:
   url: "https://git.bluebird.id"
   token: ""
-  projects: []          # mis. [692, "da/driverapp-gateway"]
+  projects: []          # opsional seed; auto-discover aktif default. mis. [692, "da/driverapp-gateway"]
   aliases: {}           # mis. {"orang@gmail.com": "orang@bluebirdgroup.com"}
+  noise_patterns: []    # tambahan pola file noise (di luar default vendor/lock/generated)
 #
 # B) DB squad-scorecard (tabel engineer_commit_days) — cepat tapi bisa basi.
 #    Bisa juga lewat env SCORECARD_DSN.
