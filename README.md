@@ -1,5 +1,9 @@
 # ClickUp Engineering Analytics
 
+[![CI](https://github.com/zihar/clickup-eng-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/zihar/clickup-eng-analytics/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+
 Tool Python untuk menganalisis produktivitas engineer dari data [ClickUp](https://clickup.com)
 lewat REST API. Menarik task per engineer (lintas space), menghitung metrik, lalu
 menghasilkan **laporan Markdown** siap di-share ke management.
@@ -88,3 +92,7 @@ clickup_analytics/
   report.py     # render Markdown
   __main__.py   # CLI
 ```
+
+## Lisensi
+
+[MIT](LICENSE) © Zihar Mehta
