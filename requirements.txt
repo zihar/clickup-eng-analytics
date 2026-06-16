@@ -1,3 +1,7 @@
 requests>=2.31
 PyYAML>=6.0
 psycopg[binary]>=3.1  # opsional: sumber commit GitLab dari DB squad-scorecard
+# Dashboard (streamlit run dashboard.py)
+streamlit>=1.40
+plotly>=5.20
+pandas>=2.0
