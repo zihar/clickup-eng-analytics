@@ -54,14 +54,18 @@ Dua sumber, pilih dengan `--commits-source {auto,gitlab,db,none}` (default `auto
 
 **A. GitLab API langsung (live, disarankan)** — selalu mutakhir, plus +/- baris asli.
 Generate token di `https://git.bluebird.id/-/user_settings/personal_access_tokens`
-(scope `read_api`), lalu `export GITLAB_TOKEN=glpat-...` dan isi daftar repo:
+(scope `read_api`), lalu `export GITLAB_TOKEN=glpat-...`:
 
 ```yaml
 gitlab:
   url: "https://git.bluebird.id"
-  projects: [692, "da/driverapp-gateway"]   # id atau path
+  projects: [692, "da/driverapp-gateway"]   # opsional seed; id atau path
   aliases: {"orang@gmail.com": "orang@bluebirdgroup.com"}  # commit email pribadi
 ```
+
+Secara default tool **auto-discover** repo tiap engineer (lewat push events GitLab),
+digabung dengan `projects` seed — jadi repo yang tidak terdaftar (mis. `argocd/*`)
+ikut tertangkap. Matikan dengan `--no-discover` kalau ingin pakai `projects` saja.
 
 **B. DB squad-scorecard** — cepat tapi bergantung kesegaran ETL. Isi `db.dsn` atau env `SCORECARD_DSN`:
 
