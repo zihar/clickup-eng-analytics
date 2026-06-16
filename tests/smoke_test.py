@@ -16,7 +16,9 @@ from engineering_productivity.gitlab import (
     is_noise,
 )
 from engineering_productivity.gitlab import fetch_commit_stats as gl_fetch_commit_stats
+from engineering_productivity.config import Config, Engineer, GitlabConfig
 from engineering_productivity.metrics import build_report_data
+from engineering_productivity.pipeline import GatherOptions, resolve_commit_source, resolve_targets
 from engineering_productivity.report import render_markdown
 
 # Dua engineer dummy.
@@ -226,6 +228,21 @@ capped = {e.name: e for e in data_capped.engineers}
 assert data_capped.filtered_stale == 1, data_capped.filtered_stale  # t3
 assert capped["Sari"].completed == 1, capped["Sari"].completed       # tinggal t2
 assert capped["Budi"].completed == 2, capped["Budi"].completed       # t1,t2 tetap
+
+# --- Pipeline: resolve target & pemilihan sumber commit (offline) ---
+_cfg = Config(
+    token="x",
+    engineers=[Engineer(name="Budi", email="budi@x.com"), Engineer(name="Sari", id=202)],
+    gitlab=GitlabConfig(url="u", token="t", projects=["1"]),
+)
+_members = [{"id": 101, "email": "budi@x.com", "username": "budi"}]
+_ids, _names = resolve_targets(_cfg, _members)
+assert _ids == {101, 202}, _ids                       # Budi via email, Sari via id
+assert _names[101] == "Budi" and _names[202] == "Sari"
+assert resolve_commit_source("auto", _cfg) == "gitlab"  # gitlab terkonfigurasi -> diutamakan
+assert resolve_commit_source("db", _cfg) == "none"      # db_dsn kosong
+assert resolve_commit_source("none", _cfg) == "none"
+assert GatherOptions().days == 30 and GatherOptions().commits_source == "auto"
 
 md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
 assert "# Laporan Produktivitas Engineering" in md
