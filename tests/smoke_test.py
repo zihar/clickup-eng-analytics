@@ -102,11 +102,29 @@ assert by_name["Sari"].tracked_hours == 6.0, by_name["Sari"].tracked_hours
 assert by_name["Budi"].lead_median == 1.5, by_name["Budi"].lead_median
 # Cycle time Budi t1 = 2+0.5 = 2.5 hari (status 'custom' saja), t2 = 1 hari -> median 1.75
 assert by_name["Budi"].cycle_median == 1.75, by_name["Budi"].cycle_median
-# Bottleneck: 'Review' harus muncul dengan rata-rata tertinggi (t3 = 4 hari)
+# Bottleneck: 'Review' harus muncul dengan median tertinggi (t3 = 4 hari)
 top = data.status_flow[0]
 assert top.status == "Review", top.status
+assert top.median_hours > 0 and top.p90_hours >= top.median_hours, (top.median_hours, top.p90_hours)
 # Estimasi akurasi Budi: tracked 10j / estimate 12j = 0.83
 assert by_name["Budi"].estimate_accuracy == 0.83, by_name["Budi"].estimate_accuracy
+
+# --- Filter --max-age: t3 (lead 5 hari) harus diabaikan bila max_age=3 ---
+data_capped = build_report_data(
+    tasks,
+    id_to_name=id_to_name,
+    target_ids={ID_BUDI, ID_SARI},
+    time_in_status=time_in_status,
+    time_entries=time_entries,
+    since="2024-05-01",
+    until="2024-05-31",
+    tz_offset=7,
+    max_age_days=3,
+)
+capped = {e.name: e for e in data_capped.engineers}
+assert data_capped.filtered_stale == 1, data_capped.filtered_stale  # t3
+assert capped["Sari"].completed == 1, capped["Sari"].completed       # tinggal t2
+assert capped["Budi"].completed == 2, capped["Budi"].completed       # t1,t2 tetap
 
 md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
 assert "# Laporan Produktivitas Engineering" in md

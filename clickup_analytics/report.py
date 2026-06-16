@@ -19,6 +19,11 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
     lines.append(f"- **Engineer dianalisis:** {len(data.engineers)}")
     lines.append(f"- **Total task selesai:** {data.total_tasks}")
     lines.append(f"- **Zona waktu bucket:** UTC{data.tz_offset:+g}")
+    if data.max_age_days is not None:
+        lines.append(
+            f"- **Filter task basi:** {data.filtered_stale} task dengan lead time "
+            f"> {data.max_age_days} hari diabaikan"
+        )
     lines.append(f"- **Dibuat:** {generated_at}")
     lines.append("")
     lines.append(
@@ -75,18 +80,19 @@ def _status_flow_table(lines: list[str], data: ReportData) -> None:
     lines.append("## Status Flow / Bottleneck")
     lines.append("")
     lines.append(
-        "Rata-rata lama task berada di tiap status (semua task pada periode). "
-        "Status dengan rata-rata tertinggi adalah kandidat bottleneck."
+        "Lama task berada di tiap status (semua task pada periode), diurutkan dari "
+        "**median** tertinggi. Median lebih tahan outlier daripada rata-rata; selisih "
+        "besar antara median dan p90/rata-rata menandakan ada beberapa task ekstrem."
     )
     lines.append("")
     if not data.status_flow:
         lines.append("_Tidak ada data status (butuh mode --deep)._")
         lines.append("")
         return
-    lines.append("| Status | Rata-rata (jam) | Jumlah task |")
-    lines.append("|---|--:|--:|")
+    lines.append("| Status | Median (jam) | p90 (jam) | Rata-rata (jam) | Jumlah task |")
+    lines.append("|---|--:|--:|--:|--:|")
     for b in data.status_flow:
-        lines.append(f"| {b.status} | {b.avg_hours} | {b.count} |")
+        lines.append(f"| {b.status} | {b.median_hours} | {b.p90_hours} | {b.avg_hours} | {b.count} |")
     lines.append("")
 
 

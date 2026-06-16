@@ -60,6 +60,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--days", type=int, default=30, help="Lookback hari bila --since kosong (default 30)")
     p.add_argument("--tz", type=float, default=7.0, help="Offset zona waktu untuk bucket minggu (default 7 = WIB)")
     p.add_argument("--deep", action="store_true", help="Ambil time_in_status per task (cycle time & bottleneck; lebih banyak API call)")
+    p.add_argument("--max-age", type=int, default=None, metavar="HARI", help="Abaikan task basi: lead time (dibuat->selesai) lebih dari N hari")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
     p.add_argument("--list-teams", action="store_true", help="Tampilkan workspace/team yang bisa diakses lalu keluar")
     p.add_argument("--list-members", action="store_true", help="Tampilkan member workspace lalu keluar")
@@ -157,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
             since=since_str,
             until=until_str,
             tz_offset=args.tz,
+            max_age_days=args.max_age,
         )
 
         markdown = render_markdown(data, generated_at=now.strftime("%Y-%m-%d %H:%M %Z"))

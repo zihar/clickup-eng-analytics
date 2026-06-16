@@ -6,6 +6,7 @@ mengubahnya ke jam/hari dan mengelompokkannya per engineer & per minggu.
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -42,6 +43,20 @@ def _median(values: list[float]) -> float:
 
 def _mean(values: list[float]) -> float:
     return round(statistics.fmean(values), 2) if values else 0.0
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    """Persentil dengan interpolasi linear (mis. pct=90 untuk p90)."""
+    if not values:
+        return 0.0
+    s = sorted(values)
+    if len(s) == 1:
+        return float(s[0])
+    k = (len(s) - 1) * pct / 100
+    lo, hi = math.floor(k), math.ceil(k)
+    if lo == hi:
+        return float(s[int(k)])
+    return s[lo] + (s[hi] - s[lo]) * (k - lo)
 
 
 # --------------------------------------------------------------------- results
@@ -87,12 +102,23 @@ class EngineerStats:
 @dataclass
 class StatusBucket:
     status: str
-    total_ms: int = 0
-    count: int = 0
+    durations: list[int] = field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        return len(self.durations)
 
     @property
     def avg_hours(self) -> float:
-        return round(self.total_ms / self.count / MS_PER_HOUR, 1) if self.count else 0.0
+        return round(statistics.fmean(self.durations) / MS_PER_HOUR, 1) if self.durations else 0.0
+
+    @property
+    def median_hours(self) -> float:
+        return round(statistics.median(self.durations) / MS_PER_HOUR, 1) if self.durations else 0.0
+
+    @property
+    def p90_hours(self) -> float:
+        return round(_percentile(self.durations, 90) / MS_PER_HOUR, 1) if self.durations else 0.0
 
 
 @dataclass
@@ -105,6 +131,8 @@ class ReportData:
     since: str
     until: str
     tz_offset: float
+    max_age_days: int | None = None
+    filtered_stale: int = 0
 
 
 # --------------------------------------------------------------------- builder
@@ -118,6 +146,7 @@ def build_report_data(
     since: str,
     until: str,
     tz_offset: float,
+    max_age_days: int | None = None,
 ) -> ReportData:
     stats: dict[int, EngineerStats] = {
         uid: EngineerStats(engineer_id=uid, name=id_to_name.get(uid, str(uid)))
@@ -126,12 +155,23 @@ def build_report_data(
     weeks: set[str] = set()
     status_flow: dict[str, StatusBucket] = {}
     deep = time_in_status is not None
+    filtered_stale = 0
 
     for task in tasks:
         date_created = to_int_ms(task.get("date_created"))
         date_done = to_int_ms(task.get("date_done")) or to_int_ms(task.get("date_closed"))
         if date_done is None:
             continue  # hanya hitung task yang benar-benar selesai
+
+        lead_days = None
+        if date_created is not None and date_done >= date_created:
+            lead_days = round((date_done - date_created) / MS_PER_DAY, 2)
+
+        # Abaikan task backlog basi (lead time > max_age): baru ditutup tapi
+        # sebenarnya nganggur berbulan-bulan, mengaburkan metrik tim.
+        if max_age_days is not None and lead_days is not None and lead_days > max_age_days:
+            filtered_stale += 1
+            continue
 
         assignees = task.get("assignees") or []
         relevant = [a for a in assignees if a.get("id") in target_ids]
@@ -140,10 +180,6 @@ def build_report_data(
 
         week = iso_week_label(date_done, tz_offset)
         weeks.add(week)
-
-        lead_days = None
-        if date_created is not None and date_done >= date_created:
-            lead_days = round((date_done - date_created) / MS_PER_DAY, 2)
 
         cycle_days = None
         if deep:
@@ -173,7 +209,8 @@ def build_report_data(
             stats[uid].tracked_ms += dur
 
     engineers_sorted = sorted(stats.values(), key=lambda e: e.completed, reverse=True)
-    flow_sorted = sorted(status_flow.values(), key=lambda b: b.avg_hours, reverse=True)
+    # Urut berdasarkan median (lebih tahan outlier) — bottleneck tipikal di atas.
+    flow_sorted = sorted(status_flow.values(), key=lambda b: b.median_hours, reverse=True)
 
     return ReportData(
         engineers=engineers_sorted,
@@ -184,6 +221,8 @@ def build_report_data(
         since=since,
         until=until,
         tz_offset=tz_offset,
+        max_age_days=max_age_days,
+        filtered_stale=filtered_stale,
     )
 
 
@@ -219,8 +258,7 @@ def _accumulate_status_flow(task: dict, time_in_status: dict[str, dict], flow: d
         if ms <= 0:
             continue
         bucket = flow.setdefault(name, StatusBucket(status=name))
-        bucket.total_ms += ms
-        bucket.count += 1
+        bucket.durations.append(ms)
 
 
 def _status_entry_ms(entry: dict) -> int:
