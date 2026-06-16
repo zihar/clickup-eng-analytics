@@ -13,7 +13,10 @@ from pathlib import Path
 
 from .client import ClickUpClient, ClickUpError
 from .config import Config, ConfigError, load_config
-from .db import DBError, fetch_commit_freshness, fetch_commit_stats
+from .db import DBError, fetch_commit_freshness
+from .db import fetch_commit_stats as db_fetch_commit_stats
+from .gitlab import GitLabClient, GitLabError
+from .gitlab import fetch_commit_stats as gl_fetch_commit_stats
 from .metrics import build_report_data
 from .report import render_markdown
 
@@ -53,6 +56,41 @@ def resolve_targets(config: Config, members: list[dict]) -> tuple[set[int], dict
     return target_ids, id_to_name
 
 
+def _resolve_commit_source(choice: str, config: Config) -> str:
+    """Tentukan sumber commit efektif. 'auto' utamakan GitLab (live) lalu DB."""
+    if choice == "gitlab":
+        return "gitlab" if config.gitlab else "none"
+    if choice == "db":
+        return "db" if config.db_dsn else "none"
+    if choice == "none":
+        return "none"
+    # auto
+    if config.gitlab:
+        return "gitlab"
+    if config.db_dsn:
+        return "db"
+    return "none"
+
+
+def _build_gitlab_email_map(config: Config, members: list[dict]) -> dict[str, int]:
+    """Petakan email penulis commit -> id engineer ClickUp (termasuk alias)."""
+    email_to_member = {(m.get("email") or "").lower(): m for m in members}
+    out: dict[str, int] = {}
+    for eng in config.engineers:
+        uid = eng.id
+        if uid is None and eng.email:
+            member = email_to_member.get(eng.email.lower())
+            if member:
+                uid = member.get("id")
+        if uid is not None and eng.email:
+            out[eng.email.lower()] = uid
+    if config.gitlab:
+        for alias, canonical in config.gitlab.aliases.items():
+            if canonical in out:
+                out[alias] = out[canonical]
+    return out
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="clickup_analytics", description=__doc__)
     p.add_argument("--config", default="config.yaml", help="Path ke config.yaml")
@@ -62,7 +100,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--tz", type=float, default=7.0, help="Offset zona waktu untuk bucket minggu (default 7 = WIB)")
     p.add_argument("--deep", action="store_true", help="Ambil time_in_status per task (cycle time & bottleneck; lebih banyak API call)")
     p.add_argument("--max-age", type=int, default=None, metavar="HARI", help="Abaikan task basi: lead time (dibuat->selesai) lebih dari N hari")
-    p.add_argument("--no-commits", action="store_true", help="Lewati aktivitas commit GitLab dari DB squad-scorecard")
+    p.add_argument("--no-commits", action="store_true", help="Lewati aktivitas commit sepenuhnya")
+    p.add_argument("--commits-source", choices=["auto", "gitlab", "db", "none"], default="auto",
+                   help="Sumber commit: gitlab (live API), db (scorecard, bisa basi), auto (gitlab > db), none")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
     p.add_argument("--list-teams", action="store_true", help="Tampilkan workspace/team yang bisa diakses lalu keluar")
     p.add_argument("--list-members", action="store_true", help="Tampilkan member workspace lalu keluar")
@@ -153,10 +193,24 @@ def main(argv: list[str] | None = None) -> int:
 
         commit_stats = None
         commit_through = commit_synced_at = None
-        if config.db_dsn and not args.no_commits:
+        source = "none" if args.no_commits else _resolve_commit_source(args.commits_source, config)
+
+        if source == "gitlab":
+            print(f"[*] Menarik commit langsung dari GitLab API ({len(config.gitlab.projects)} repo) ...")
+            try:
+                gl = GitLabClient(config.gitlab.url, config.gitlab.token)
+                email_map = _build_gitlab_email_map(config, members)
+                commit_stats = gl_fetch_commit_stats(
+                    gl, config.gitlab.projects, email_map, since_str, until_str,
+                    on_warn=lambda m: print(f"    [!] {m}", file=sys.stderr),
+                )
+            except GitLabError as exc:
+                print(f"    [!] Commit GitLab dilewati: {exc}", file=sys.stderr)
+                commit_stats = None
+        elif source == "db":
             print("[*] Menarik aktivitas commit dari DB squad-scorecard ...")
             try:
-                commit_stats = fetch_commit_stats(
+                commit_stats = db_fetch_commit_stats(
                     config.db_dsn, sorted(target_ids), since_str, until_str
                 )
                 commit_through, commit_synced_at = fetch_commit_freshness(config.db_dsn)

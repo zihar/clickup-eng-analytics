@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from clickup_analytics.db import CommitStats
+from clickup_analytics.gitlab import fetch_commit_stats as gl_fetch_commit_stats
 from clickup_analytics.metrics import build_report_data
 from clickup_analytics.report import render_markdown
 
@@ -125,6 +126,35 @@ assert data.has_commit_data is True
 assert by_name["Budi"].commits == 20 and by_name["Budi"].active_days == 5, by_name["Budi"].commits
 assert by_name["Budi"].repos_touched == 2, by_name["Budi"].repos_touched
 assert by_name["Sari"].commits == 0, by_name["Sari"].commits
+
+
+# --- Sumber GitLab API langsung (pakai fake client, tanpa network) ---
+class _FakeGL:
+    def __init__(self, by_project):
+        self.by_project = by_project
+
+    def iter_commits(self, project, since_iso, until_iso, with_stats=True):
+        yield from self.by_project.get(str(project), [])
+
+
+gl_commits = {
+    "100": [
+        {"id": "a1", "author_email": "Budi@x.com", "committed_date": "2024-05-02T10:00:00Z", "stats": {"additions": 10, "deletions": 2}},
+        {"id": "a2", "author_email": "budi@x.com", "committed_date": "2024-05-02T12:00:00Z", "stats": {"additions": 5, "deletions": 0}},
+        {"id": "a1", "author_email": "budi@x.com", "committed_date": "2024-05-02T10:00:00Z", "stats": {"additions": 10, "deletions": 2}},  # dup sha
+        {"id": "x9", "author_email": "unknown@x.com", "committed_date": "2024-05-03", "stats": {}},  # bukan engineer
+    ],
+    "200": [
+        {"id": "b1", "author_email": "dewa@gmail.com", "committed_date": "2024-05-04T09:00:00Z", "stats": {"additions": 3, "deletions": 1}},  # alias Budi
+    ],
+}
+gl_email_map = {"budi@x.com": ID_BUDI, "dewa@gmail.com": ID_BUDI}
+gl_stats = gl_fetch_commit_stats(_FakeGL(gl_commits), ["100", "200"], gl_email_map, "2024-05-01", "2024-05-31")
+gb = gl_stats[ID_BUDI]
+assert gb.commits == 3, gb.commits          # a1, a2, b1 (dup a1 & unknown diabaikan)
+assert gb.additions == 18 and gb.deletions == 3, (gb.additions, gb.deletions)
+assert gb.active_days == 2, gb.active_days   # 05-02 & 05-04
+assert gb.repos == 2, gb.repos              # project 100 & 200
 
 # --- Filter --max-age: t3 (lead 5 hari) harus diabaikan bila max_age=3 ---
 data_capped = build_report_data(

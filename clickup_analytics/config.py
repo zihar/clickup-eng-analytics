@@ -19,11 +19,20 @@ class Engineer:
 
 
 @dataclass
+class GitlabConfig:
+    url: str
+    token: str
+    projects: list[str]
+    aliases: dict[str, str] = field(default_factory=dict)  # alias_email -> canonical_email
+
+
+@dataclass
 class Config:
     token: str
     engineers: list[Engineer]
     team_id: str | None = None
     db_dsn: str | None = None
+    gitlab: GitlabConfig | None = None
     extra: dict = field(default_factory=dict)
 
     @property
@@ -78,9 +87,26 @@ def load_config(path: str | Path) -> Config:
     if db_dsn:
         db_dsn = db_dsn.strip() or None
 
+    gitlab = _parse_gitlab(raw.get("gitlab") or {})
+
     return Config(
         token=token,
         engineers=engineers,
         team_id=str(raw["team_id"]) if raw.get("team_id") else None,
         db_dsn=db_dsn,
+        gitlab=gitlab,
     )
+
+
+def _parse_gitlab(section: dict) -> GitlabConfig | None:
+    gl_token = os.environ.get("GITLAB_TOKEN") or section.get("token") or ""
+    gl_token = gl_token.strip()
+    projects = [str(p) for p in (section.get("projects") or [])]
+    url = (section.get("url") or "https://git.bluebird.id").strip()
+    if not gl_token or not projects:
+        return None  # GitLab tidak aktif tanpa token + daftar project
+    aliases = {
+        str(k).lower(): str(v).lower()
+        for k, v in (section.get("aliases") or {}).items()
+    }
+    return GitlabConfig(url=url, token=gl_token, projects=projects, aliases=aliases)

@@ -7,7 +7,7 @@ dengan engineer di tool ini tanpa perlu memanggil GitLab API sama sekali.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from .models import CommitStats  # re-export untuk kompatibilitas
 
 try:
     import psycopg
@@ -19,13 +19,7 @@ class DBError(Exception):
     pass
 
 
-@dataclass
-class CommitStats:
-    commits: int = 0
-    additions: int = 0
-    deletions: int = 0
-    active_days: int = 0
-    repos: int = 0
+__all__ = ["CommitStats", "DBError", "fetch_commit_stats", "fetch_commit_freshness"]
 
 
 _SQL = """
