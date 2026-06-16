@@ -8,16 +8,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from clickup_analytics.db import CommitStats
-from clickup_analytics.gitlab import (
+from engineering_productivity.db import CommitStats
+from engineering_productivity.gitlab import (
     DEFAULT_NOISE_PATTERNS,
     clean_diff_stats,
     discover_project_ids,
     is_noise,
 )
-from clickup_analytics.gitlab import fetch_commit_stats as gl_fetch_commit_stats
-from clickup_analytics.metrics import build_report_data
-from clickup_analytics.report import render_markdown
+from engineering_productivity.gitlab import fetch_commit_stats as gl_fetch_commit_stats
+from engineering_productivity.metrics import build_report_data
+from engineering_productivity.report import render_markdown
 
 # Dua engineer dummy.
 ID_BUDI, ID_SARI = 101, 202

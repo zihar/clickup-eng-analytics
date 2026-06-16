@@ -24,7 +24,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Compile check
-        run: python -m py_compile clickup_analytics/*.py
+        run: python -m py_compile engineering_productivity/*.py
 
       - name: Run smoke test
         run: python tests/smoke_test.py

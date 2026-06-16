@@ -1,6 +1,6 @@
 # ClickUp Engineering Analytics
 
-[![CI](https://github.com/zihar/clickup-eng-analytics/actions/workflows/ci.yml/badge.svg)](https://github.com/zihar/clickup-eng-analytics/actions/workflows/ci.yml)
+[![CI](https://github.com/zihar/engineering-productivity/actions/workflows/ci.yml/badge.svg)](https://github.com/zihar/engineering-productivity/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
 
@@ -23,7 +23,7 @@ menghasilkan **laporan Markdown** siap di-share ke management.
 ## Setup
 
 ```bash
-cd clickup-eng-analytics
+cd engineering-productivity
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -85,18 +85,18 @@ Matikan fitur commit dengan `--no-commits`.
 Lihat id/email member workspace:
 
 ```bash
-python -m clickup_analytics --list-members
-python -m clickup_analytics --list-teams
+python -m engineering_productivity --list-members
+python -m engineering_productivity --list-teams
 ```
 
 ## Pemakaian
 
 ```bash
 # 30 hari terakhir, laporan ringkas (cepat)
-python -m clickup_analytics --days 30 -o reports/bulan-ini.md
+python -m engineering_productivity --days 30 -o reports/bulan-ini.md
 
 # Rentang spesifik + analisis mendalam (cycle time & bottleneck)
-python -m clickup_analytics --since 2026-05-01 --until 2026-05-31 --deep -o reports/mei.md
+python -m engineering_productivity --since 2026-05-01 --until 2026-05-31 --deep -o reports/mei.md
 ```
 
 | Flag | Default | Fungsi |
@@ -121,7 +121,7 @@ python -m clickup_analytics --since 2026-05-01 --until 2026-05-31 --deep -o repo
 ## Struktur
 
 ```
-clickup_analytics/
+engineering_productivity/
   config.py     # muat & validasi config.yaml (+ token dari env)
   client.py     # klien ClickUp REST API v2 (paginasi + retry rate limit)
   metrics.py    # perhitungan throughput, lead/cycle time, time tracked, status flow

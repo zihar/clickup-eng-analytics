@@ -1,7 +1,7 @@
 """Entry point CLI: tarik data ClickUp -> hitung metrik -> tulis laporan Markdown.
 
 Contoh:
-    python -m clickup_analytics --config config.yaml --days 30 --deep -o reports/juni.md
+    python -m engineering_productivity --config config.yaml --days 30 --deep -o reports/juni.md
 """
 
 from __future__ import annotations
@@ -92,7 +92,7 @@ def _build_gitlab_email_map(config: Config, members: list[dict]) -> dict[str, in
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="clickup_analytics", description=__doc__)
+    p = argparse.ArgumentParser(prog="engineering_productivity", description=__doc__)
     p.add_argument("--config", default="config.yaml", help="Path ke config.yaml")
     p.add_argument("--since", help="Tanggal mulai YYYY-MM-DD (default: --days lalu)")
     p.add_argument("--until", help="Tanggal akhir YYYY-MM-DD (default: hari ini)")
