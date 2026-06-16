@@ -17,7 +17,8 @@ menghasilkan **laporan Markdown** siap di-share ke management.
 | **Cycle time** | Waktu task berada di status aktif (mis. In Progress, Review). Butuh `--deep`. |
 | **Time tracked** | Jam time-tracking nyata per engineer vs estimasi, plus akurasi estimasi. |
 | **Status flow / bottleneck** | Median/p90 lama task nyangkut di tiap status (status terminal dikecualikan). Butuh `--deep`. |
-| **Aktivitas commit (GitLab)** | Commit, hari aktif, & repo per engineer dari DB squad-scorecard. Join via id ClickUp. Opsional. |
+| **Aktivitas commit (GitLab)** | Commit, hari aktif, +/- baris, & repo per engineer. Sumber: GitLab API langsung (live) atau DB squad-scorecard. Opsional. |
+| **Matriks task vs commit** | Kuadran 2×2 (throughput ClickUp × hari aktif commit) untuk lihat pola disiplin task vs output kode. |
 
 ## Setup
 
@@ -49,16 +50,29 @@ engineers:
 
 ### (Opsional) Aktivitas commit GitLab
 
-Kalau punya akses DB [squad-scorecard](https://git.bluebird.id) (Postgres berisi
-tabel `engineer_commit_days`), isi `db.dsn` di `config.yaml` atau env `SCORECARD_DSN`:
+Dua sumber, pilih dengan `--commits-source {auto,gitlab,db,none}` (default `auto`: GitLab dulu, fallback DB):
+
+**A. GitLab API langsung (live, disarankan)** — selalu mutakhir, plus +/- baris asli.
+Generate token di `https://git.bluebird.id/-/user_settings/personal_access_tokens`
+(scope `read_api`), lalu `export GITLAB_TOKEN=glpat-...` dan isi daftar repo:
+
+```yaml
+gitlab:
+  url: "https://git.bluebird.id"
+  projects: [692, "da/driverapp-gateway"]   # id atau path
+  aliases: {"orang@gmail.com": "orang@bluebirdgroup.com"}  # commit email pribadi
+```
+
+**B. DB squad-scorecard** — cepat tapi bergantung kesegaran ETL. Isi `db.dsn` atau env `SCORECARD_DSN`:
 
 ```yaml
 db:
   dsn: "postgres://user:pass@localhost:5432/scorecard?sslmode=disable"
 ```
 
-Tool akan menambah section **Aktivitas Commit** (commit, hari aktif, repo per engineer),
-join lewat id ClickUp. Tanpa DSN, fitur ini otomatis dilewati. Matikan paksa dengan `--no-commits`.
+Tool menambah section **Aktivitas Commit** + **Matriks Task vs Commit**, join lewat id ClickUp.
+Kalau pakai DB dan datanya lebih lama dari periode, laporan memperingatkan otomatis.
+Matikan fitur commit dengan `--no-commits`.
 
 Lihat id/email member workspace:
 

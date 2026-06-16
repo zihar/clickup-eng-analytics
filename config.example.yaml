@@ -9,11 +9,23 @@ token: ""
 # yang bisa diakses token-mu (jalankan dengan --list-teams untuk melihat daftarnya).
 team_id: ""
 
-# (Opsional) Sumber aktivitas commit GitLab dari DB squad-scorecard.
-# Tabel engineer_commit_days dipakai; engineer_id-nya = id user ClickUp.
-# Bisa juga lewat env SCORECARD_DSN. Kosongkan kalau tak dipakai.
+# (Opsional) Sumber aktivitas commit — pilih salah satu (atau dua-duanya).
+#
+# A) GitLab API langsung — LIVE & tidak bergantung DB. Disarankan.
+#    Token: https://git.bluebird.id/-/user_settings/personal_access_tokens (scope read_api)
+#    atau env GITLAB_TOKEN. projects = daftar id/path repo yang dianalisis.
+gitlab:
+  url: "https://git.bluebird.id"
+  token: ""
+  projects: []          # mis. [692, "da/driverapp-gateway"]
+  aliases: {}           # mis. {"orang@gmail.com": "orang@bluebirdgroup.com"}
+#
+# B) DB squad-scorecard (tabel engineer_commit_days) — cepat tapi bisa basi.
+#    Bisa juga lewat env SCORECARD_DSN.
 db:
   dsn: ""  # contoh: postgres://user:pass@localhost:5432/scorecard?sslmode=disable
+#
+# Pilih sumber saat run dengan --commits-source {auto,gitlab,db,none} (default auto: gitlab > db).
 
 # Daftar engineer yang mau dianalisis. Boleh pakai email ATAU id numerik.
 # Email akan di-resolve otomatis ke id lewat daftar member workspace.
