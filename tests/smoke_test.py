@@ -1,0 +1,122 @@
+"""Smoke test offline: validasi metrik & render Markdown tanpa memanggil API.
+
+Jalankan: ./.venv/bin/python tests/smoke_test.py
+"""
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from clickup_analytics.metrics import build_report_data
+from clickup_analytics.report import render_markdown
+
+# Dua engineer dummy.
+ID_BUDI, ID_SARI = 101, 202
+id_to_name = {ID_BUDI: "Budi", ID_SARI: "Sari"}
+
+# date_created / date_done dalam epoch ms (string, seperti respons ClickUp asli).
+DAY = 86_400_000
+BASE = 1_716_000_000_000  # ~Mei 2024
+
+tasks = [
+    {
+        "id": "t1",
+        "date_created": str(BASE),
+        "date_done": str(BASE + 2 * DAY),
+        "time_estimate": str(8 * 3_600_000),  # 8 jam
+        "assignees": [{"id": ID_BUDI, "email": "budi@x.com"}],
+    },
+    {
+        "id": "t2",
+        "date_created": str(BASE + 3 * DAY),
+        "date_done": str(BASE + 4 * DAY),
+        "time_estimate": str(4 * 3_600_000),
+        "assignees": [{"id": ID_BUDI}, {"id": ID_SARI}],  # shared credit
+    },
+    {
+        "id": "t3",
+        "date_created": str(BASE + 10 * DAY),
+        "date_done": str(BASE + 15 * DAY),
+        "time_estimate": "0",
+        "assignees": [{"id": ID_SARI}],
+    },
+    {
+        # Task belum selesai -> harus diabaikan.
+        "id": "t4",
+        "date_created": str(BASE),
+        "date_done": None,
+        "assignees": [{"id": ID_BUDI}],
+    },
+]
+
+time_in_status = {
+    "t1": {
+        "current_status": {"status": "done", "type": "closed", "total_time": {"by_minute": 0}},
+        "status_history": [
+            {"status": "to do", "type": "open", "total_time": {"by_minute": 1440}},      # 1 hari
+            {"status": "in progress", "type": "custom", "total_time": {"by_minute": 2880}},  # 2 hari aktif
+            {"status": "review", "type": "custom", "total_time": {"by_minute": 720}},     # 0.5 hari
+        ],
+    },
+    "t2": {
+        "current_status": {"status": "done", "type": "closed", "total_time": {"by_minute": 0}},
+        "status_history": [
+            {"status": "in progress", "type": "custom", "total_time": {"by_minute": 1440}},
+        ],
+    },
+    "t3": {
+        "current_status": {"status": "done", "type": "closed", "total_time": {"by_minute": 0}},
+        "status_history": [
+            {"status": "review", "type": "custom", "total_time": {"by_minute": 5760}},  # 4 hari nyangkut di review
+        ],
+    },
+}
+
+time_entries = [
+    {"user": {"id": ID_BUDI}, "duration": str(10 * 3_600_000)},  # 10 jam
+    {"user": {"id": ID_SARI}, "duration": str(6 * 3_600_000)},
+    {"user": {"id": ID_SARI}, "duration": "-5000"},  # timer berjalan / negatif -> diabaikan
+    {"user": {"id": 999}, "duration": str(3_600_000)},  # bukan target -> diabaikan
+]
+
+data = build_report_data(
+    tasks,
+    id_to_name=id_to_name,
+    target_ids={ID_BUDI, ID_SARI},
+    time_in_status=time_in_status,
+    time_entries=time_entries,
+    since="2024-05-01",
+    until="2024-05-31",
+    tz_offset=7,
+)
+
+# --- Asersi inti ---
+by_name = {e.name: e for e in data.engineers}
+assert data.total_tasks == 4, f"total_tasks salah: {data.total_tasks}"  # t1,t2(budi) + t2,t3(sari)
+assert by_name["Budi"].completed == 2, by_name["Budi"].completed
+assert by_name["Sari"].completed == 2, by_name["Sari"].completed
+assert by_name["Budi"].tracked_hours == 10.0, by_name["Budi"].tracked_hours
+assert by_name["Sari"].tracked_hours == 6.0, by_name["Sari"].tracked_hours
+# Budi lead times: t1=2hari, t2=1hari -> median 1.5
+assert by_name["Budi"].lead_median == 1.5, by_name["Budi"].lead_median
+# Cycle time Budi t1 = 2+0.5 = 2.5 hari (status 'custom' saja), t2 = 1 hari -> median 1.75
+assert by_name["Budi"].cycle_median == 1.75, by_name["Budi"].cycle_median
+# Bottleneck: 'Review' harus muncul dengan rata-rata tertinggi (t3 = 4 hari)
+top = data.status_flow[0]
+assert top.status == "Review", top.status
+# Estimasi akurasi Budi: tracked 10j / estimate 12j = 0.83
+assert by_name["Budi"].estimate_accuracy == 0.83, by_name["Budi"].estimate_accuracy
+
+md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
+assert "# Laporan Produktivitas Engineering" in md
+assert "Budi" in md and "Sari" in md
+assert "Bottleneck" in md
+
+out = Path(__file__).resolve().parent / "sample_report.md"
+out.write_text(md, encoding="utf-8")
+
+print("OK - semua asersi lolos.")
+print(f"Contoh laporan ditulis ke {out}")
+print("\n----- cuplikan laporan -----\n")
+print("\n".join(md.splitlines()[:18]))
