@@ -16,7 +16,8 @@ menghasilkan **laporan Markdown** siap di-share ke management.
 | **Lead time** | Waktu dari task dibuat → selesai (hari). Median & rata-rata. |
 | **Cycle time** | Waktu task berada di status aktif (mis. In Progress, Review). Butuh `--deep`. |
 | **Time tracked** | Jam time-tracking nyata per engineer vs estimasi, plus akurasi estimasi. |
-| **Status flow / bottleneck** | Rata-rata lama task nyangkut di tiap status. Butuh `--deep`. |
+| **Status flow / bottleneck** | Median/p90 lama task nyangkut di tiap status (status terminal dikecualikan). Butuh `--deep`. |
+| **Aktivitas commit (GitLab)** | Commit, hari aktif, & repo per engineer dari DB squad-scorecard. Join via id ClickUp. Opsional. |
 
 ## Setup
 
@@ -45,6 +46,19 @@ engineers:
   - name: "Sari"
     id: 12345678
 ```
+
+### (Opsional) Aktivitas commit GitLab
+
+Kalau punya akses DB [squad-scorecard](https://git.bluebird.id) (Postgres berisi
+tabel `engineer_commit_days`), isi `db.dsn` di `config.yaml` atau env `SCORECARD_DSN`:
+
+```yaml
+db:
+  dsn: "postgres://user:pass@localhost:5432/scorecard?sslmode=disable"
+```
+
+Tool akan menambah section **Aktivitas Commit** (commit, hari aktif, repo per engineer),
+join lewat id ClickUp. Tanpa DSN, fitur ini otomatis dilewati. Matikan paksa dengan `--no-commits`.
 
 Lihat id/email member workspace:
 
