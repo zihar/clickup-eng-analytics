@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import statistics
+
 from .metrics import ReportData, EngineerStats
 
 
@@ -24,6 +26,14 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
             f"- **Filter task basi:** {data.filtered_stale} task dengan lead time "
             f"> {data.max_age_days} hari diabaikan"
         )
+    if data.has_commit_data and data.commit_through:
+        note = f"- **Commit GitLab tersinkron s/d:** {data.commit_through}"
+        if data.commit_through < data.until:
+            note += (
+                f" ⚠️ **lebih lama dari periode** (s/d {data.until}); commit setelah "
+                f"{data.commit_through} belum masuk DB — jalankan ulang ETL squad-scorecard"
+            )
+        lines.append(note)
     lines.append(f"- **Dibuat:** {generated_at}")
     lines.append("")
     lines.append(
@@ -36,6 +46,7 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
     _throughput_table(lines, data)
     if data.has_commit_data:
         _commit_table(lines, data.engineers)
+        _quadrant_table(lines, data.engineers)
     if data.deep:
         _status_flow_table(lines, data)
     _per_engineer_detail(lines, data.engineers, data.has_commit_data)
@@ -94,6 +105,43 @@ def _commit_table(lines: list[str], engineers: list[EngineerStats]) -> None:
             f"| {e.name} | {e.commits} | {e.active_days} | {e.repos_touched} "
             f"| {e.commit_additions} | {e.commit_deletions} |"
         )
+    lines.append("")
+
+
+def _quadrant_table(lines: list[str], engineers: list[EngineerStats]) -> None:
+    """Matriks 2x2: throughput task (ClickUp) vs hari aktif commit (GitLab)."""
+    if not engineers:
+        return
+    t_med = statistics.median([e.completed for e in engineers])
+    a_med = statistics.median([e.active_days for e in engineers])
+
+    cells: dict[tuple[str, str], list[str]] = {
+        ("hi", "lo"): [], ("hi", "hi"): [], ("lo", "lo"): [], ("lo", "hi"): [],
+    }
+    for e in engineers:
+        t = "hi" if e.completed > t_med else "lo"
+        a = "hi" if e.active_days > a_med else "lo"
+        cells[(t, a)].append(e.name)
+
+    def cell(names: list[str]) -> str:
+        return "<br>".join(names) if names else "—"
+
+    lines.append("## Matriks Task vs Commit")
+    lines.append("")
+    lines.append(
+        f"Sumbu: **task selesai** (ambang median {t_med:g}) × **hari aktif commit** "
+        f"(ambang median {a_med:g}). Untuk melihat pola, **bukan ranking** — selalu baca "
+        "dengan konteks (peran, jenis kerja, email commit yang mungkin belum ter-alias)."
+    )
+    lines.append("")
+    lines.append("|  | Commit rendah | Commit tinggi |")
+    lines.append("|---|---|---|")
+    lines.append(f"| **Task tinggi** | {cell(cells[('hi', 'lo')])} | {cell(cells[('hi', 'hi')])} |")
+    lines.append(f"| **Task rendah** | {cell(cells[('lo', 'lo')])} | {cell(cells[('lo', 'hi')])} |")
+    lines.append("")
+    lines.append("- **Task tinggi · commit rendah:** banyak task ditutup, sedikit kode — cek kerja non-kode atau commit di email yang belum ter-alias.")
+    lines.append("- **Task rendah · commit tinggi:** aktif ngoding tapi jarang update ClickUp — soal higiene task, bukan output.")
+    lines.append("- **Task rendah · commit rendah:** aktivitas rendah di dua sistem — perlu klarifikasi langsung.")
     lines.append("")
 
 

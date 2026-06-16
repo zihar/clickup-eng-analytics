@@ -97,6 +97,7 @@ data = build_report_data(
     until="2024-05-31",
     tz_offset=7,
     commit_stats=commit_stats,
+    commit_through="2024-05-15",  # < until 2024-05-31 -> harus memicu peringatan basi
 )
 
 # --- Asersi inti ---
@@ -147,6 +148,8 @@ assert "# Laporan Produktivitas Engineering" in md
 assert "Budi" in md and "Sari" in md
 assert "Bottleneck" in md
 assert "Aktivitas Commit" in md
+assert "Matriks Task vs Commit" in md
+assert "lebih lama dari periode" in md  # peringatan commit basi (through < until)
 
 out = Path(__file__).resolve().parent / "sample_report.md"
 out.write_text(md, encoding="utf-8")

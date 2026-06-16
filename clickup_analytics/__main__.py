@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .client import ClickUpClient, ClickUpError
 from .config import Config, ConfigError, load_config
-from .db import DBError, fetch_commit_stats
+from .db import DBError, fetch_commit_freshness, fetch_commit_stats
 from .metrics import build_report_data
 from .report import render_markdown
 
@@ -152,12 +152,20 @@ def main(argv: list[str] | None = None) -> int:
             time_entries = []
 
         commit_stats = None
+        commit_through = commit_synced_at = None
         if config.db_dsn and not args.no_commits:
             print("[*] Menarik aktivitas commit dari DB squad-scorecard ...")
             try:
                 commit_stats = fetch_commit_stats(
                     config.db_dsn, sorted(target_ids), since_str, until_str
                 )
+                commit_through, commit_synced_at = fetch_commit_freshness(config.db_dsn)
+                if commit_through and commit_through < until_str:
+                    print(
+                        f"    [!] Commit hanya tersinkron s/d {commit_through} "
+                        f"(periode s/d {until_str}) — data ETL belum mutakhir.",
+                        file=sys.stderr,
+                    )
             except DBError as exc:
                 print(f"    [!] Commit dilewati (DB tak terjangkau): {exc}", file=sys.stderr)
                 commit_stats = None
@@ -173,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
             tz_offset=args.tz,
             max_age_days=args.max_age,
             commit_stats=commit_stats,
+            commit_through=commit_through,
+            commit_synced_at=commit_synced_at,
         )
 
         markdown = render_markdown(data, generated_at=now.strftime("%Y-%m-%d %H:%M %Z"))

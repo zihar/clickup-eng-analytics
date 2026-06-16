@@ -144,6 +144,8 @@ class ReportData:
     max_age_days: int | None = None
     filtered_stale: int = 0
     has_commit_data: bool = False
+    commit_through: str | None = None
+    commit_synced_at: str | None = None
 
 
 # --------------------------------------------------------------------- builder
@@ -159,6 +161,8 @@ def build_report_data(
     tz_offset: float,
     max_age_days: int | None = None,
     commit_stats: dict | None = None,
+    commit_through: str | None = None,
+    commit_synced_at: str | None = None,
 ) -> ReportData:
     stats: dict[int, EngineerStats] = {
         uid: EngineerStats(engineer_id=uid, name=id_to_name.get(uid, str(uid)))
@@ -258,6 +262,8 @@ def build_report_data(
         max_age_days=max_age_days,
         filtered_stale=filtered_stale,
         has_commit_data=commit_stats is not None,
+        commit_through=commit_through,
+        commit_synced_at=commit_synced_at,
     )
 
 

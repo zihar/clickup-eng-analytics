@@ -68,3 +68,22 @@ def fetch_commit_stats(
     except psycopg.Error as exc:  # type: ignore[union-attr]
         raise DBError(str(exc)) from exc
     return out
+
+
+def fetch_commit_freshness(dsn: str) -> tuple[str | None, str | None]:
+    """Kembalikan (commit_date terbaru, last_sync_at terakhir) sebagai string ISO.
+
+    Dipakai untuk memperingatkan kalau data commit basi dibanding jendela ClickUp.
+    """
+    if psycopg is None:
+        raise DBError("Driver psycopg tidak terpasang (pip install 'psycopg[binary]').")
+    try:
+        with psycopg.connect(dsn, connect_timeout=10) as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT MAX(commit_date)::text, MAX(last_sync_at)::text FROM engineer_commit_days"
+                )
+                row = cur.fetchone()
+                return (row[0], row[1]) if row else (None, None)
+    except psycopg.Error as exc:  # type: ignore[union-attr]
+        raise DBError(str(exc)) from exc
