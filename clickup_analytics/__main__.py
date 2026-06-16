@@ -15,7 +15,7 @@ from .client import ClickUpClient, ClickUpError
 from .config import Config, ConfigError, load_config
 from .db import DBError, fetch_commit_freshness
 from .db import fetch_commit_stats as db_fetch_commit_stats
-from .gitlab import GitLabClient, GitLabError
+from .gitlab import GitLabClient, GitLabError, discover_project_ids
 from .gitlab import fetch_commit_stats as gl_fetch_commit_stats
 from .metrics import build_report_data
 from .report import render_markdown
@@ -103,6 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-commits", action="store_true", help="Lewati aktivitas commit sepenuhnya")
     p.add_argument("--commits-source", choices=["auto", "gitlab", "db", "none"], default="auto",
                    help="Sumber commit: gitlab (live API), db (scorecard, bisa basi), auto (gitlab > db), none")
+    p.add_argument("--no-discover", action="store_true",
+                   help="(GitLab) jangan auto-discover repo per engineer; pakai daftar gitlab.projects saja")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
     p.add_argument("--list-teams", action="store_true", help="Tampilkan workspace/team yang bisa diakses lalu keluar")
     p.add_argument("--list-members", action="store_true", help="Tampilkan member workspace lalu keluar")
@@ -197,13 +199,23 @@ def main(argv: list[str] | None = None) -> int:
 
         if source == "gitlab":
             commit_source = "GitLab API (live)"
-            print(f"[*] Menarik commit langsung dari GitLab API ({len(config.gitlab.projects)} repo) ...")
             try:
                 gl = GitLabClient(config.gitlab.url, config.gitlab.token)
+                warn = lambda m: print(f"    [!] {m}", file=sys.stderr)
+                projects = {str(p) for p in config.gitlab.projects}
+                if not args.no_discover:
+                    print("[*] Auto-discover repo per engineer dari GitLab ...")
+                    discovered = discover_project_ids(
+                        gl,
+                        [(e.email, e.name) for e in config.engineers if e.email],
+                        since_str, until_str, on_warn=warn,
+                    )
+                    print(f"    {len(discovered)} repo dari aktivitas push + {len(projects)} dari seed.")
+                    projects |= discovered
+                print(f"[*] Menarik commit langsung dari GitLab API ({len(projects)} repo) ...")
                 email_map = _build_gitlab_email_map(config, members)
                 commit_stats = gl_fetch_commit_stats(
-                    gl, config.gitlab.projects, email_map, since_str, until_str,
-                    on_warn=lambda m: print(f"    [!] {m}", file=sys.stderr),
+                    gl, sorted(projects), email_map, since_str, until_str, on_warn=warn,
                 )
             except GitLabError as exc:
                 print(f"    [!] Commit GitLab dilewati: {exc}", file=sys.stderr)

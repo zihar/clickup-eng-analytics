@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from clickup_analytics.db import CommitStats
+from clickup_analytics.gitlab import discover_project_ids
 from clickup_analytics.gitlab import fetch_commit_stats as gl_fetch_commit_stats
 from clickup_analytics.metrics import build_report_data
 from clickup_analytics.report import render_markdown
@@ -155,6 +156,26 @@ assert gb.commits == 3, gb.commits          # a1, a2, b1 (dup a1 & unknown diaba
 assert gb.additions == 18 and gb.deletions == 3, (gb.additions, gb.deletions)
 assert gb.active_days == 2, gb.active_days   # 05-02 & 05-04
 assert gb.repos == 2, gb.repos              # project 100 & 200
+
+
+# --- Auto-discover repo per engineer (fake client) ---
+class _FakeDiscover:
+    def find_user_id(self, *, email=None, name=None):
+        return {"budi@x.com": 11, "sari@x.com": 22}.get((email or "").lower())
+
+    def iter_push_events(self, user_id, after, before):
+        return {
+            11: [{"project_id": 100}, {"project_id": 3149}, {"project_id": 100}],
+            22: [{"project_id": 200}],
+        }.get(user_id, [])
+
+
+disc = discover_project_ids(
+    _FakeDiscover(),
+    [("budi@x.com", "Budi"), ("sari@x.com", "Sari"), ("nobody@x.com", "Nobody")],
+    "2024-05-01", "2024-05-31",
+)
+assert disc == {"100", "3149", "200"}, disc  # union, dedup, user tak dikenal dilewati
 
 # --- Filter --max-age: t3 (lead 5 hari) harus diabaikan bila max_age=3 ---
 data_capped = build_report_data(

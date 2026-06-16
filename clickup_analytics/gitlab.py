@@ -9,6 +9,7 @@ Dok API: https://docs.gitlab.com/ee/api/commits.html
 from __future__ import annotations
 
 import time
+from datetime import date, timedelta
 from urllib.parse import quote
 
 import requests
@@ -44,6 +45,40 @@ class GitLabClient:
             return resp.json()
         raise GitLabError(f"Gagal GET {path} setelah {self.max_retries} percobaan.")
 
+    def find_user_id(self, *, email: str | None = None, name: str | None = None) -> int | None:
+        """Cari id user GitLab. Coba username (= bagian lokal email) lalu nama.
+
+        Search by email butuh hak admin, jadi tidak diandalkan.
+        """
+        if email:
+            local = email.split("@")[0]
+            res = self._get("/api/v4/users", {"username": local})
+            if res:
+                return res[0]["id"]
+        if name:
+            res = self._get("/api/v4/users", {"search": name})
+            for u in res:
+                if (u.get("name") or "").lower() == name.lower():
+                    return u["id"]
+            if res:
+                return res[0]["id"]
+        return None
+
+    def iter_push_events(self, user_id: int, after: str, before: str):
+        """Iterasi event push user (after/before eksklusif, format YYYY-MM-DD)."""
+        page = 1
+        while True:
+            data = self._get(
+                f"/api/v4/users/{user_id}/events",
+                {"action": "pushed", "after": after, "before": before, "per_page": PER_PAGE, "page": page},
+            )
+            if not data:
+                break
+            yield from data
+            if len(data) < PER_PAGE:
+                break
+            page += 1
+
     def iter_commits(self, project: str, since_iso: str, until_iso: str, *, with_stats: bool = True):
         """Iterasi commit satu project pada rentang waktu (semua branch)."""
         pid = quote(str(project), safe="")
@@ -64,6 +99,43 @@ class GitLabClient:
             if len(data) < PER_PAGE:
                 break
             page += 1
+
+
+def discover_project_ids(
+    client: GitLabClient,
+    engineers: list[tuple[str | None, str]],
+    since_date: str,
+    until_date: str,
+    *,
+    on_warn=None,
+) -> set[str]:
+    """Temukan repo yang di-push tiap engineer pada periode (independen dari scorecard).
+
+    engineers = daftar (email, nama). Mengembalikan himpunan project id (string).
+    """
+    after = (date.fromisoformat(since_date) - timedelta(days=1)).isoformat()
+    before = (date.fromisoformat(until_date) + timedelta(days=1)).isoformat()
+    ids: set[str] = set()
+    for email, name in engineers:
+        try:
+            uid = client.find_user_id(email=email, name=name)
+        except GitLabError as exc:
+            if on_warn:
+                on_warn(f"cari user {name}: {exc}")
+            continue
+        if not uid:
+            if on_warn:
+                on_warn(f"user GitLab tak ditemukan: {name}")
+            continue
+        try:
+            for ev in client.iter_push_events(uid, after, before):
+                pid = ev.get("project_id")
+                if pid is not None:
+                    ids.add(str(pid))
+        except GitLabError as exc:
+            if on_warn:
+                on_warn(f"events {name}: {exc}")
+    return ids
 
 
 def _accumulator():
