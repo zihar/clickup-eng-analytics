@@ -7,6 +7,7 @@ Contoh:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -33,6 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Tampilkan tanggal task terakhir selesai per engineer (query ekstra lintas periode)")
     p.add_argument("--last-done-lookback", type=int, default=365, metavar="HARI",
                    help="Batas mundur pencarian last-done (default 365)")
+    p.add_argument("--chapter", action="append", metavar="CHAPTER",
+                   help="Filter engineer per chapter (boleh diulang, mis. --chapter 'Backend Golang')")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
     p.add_argument("--list-teams", action="store_true", help="Tampilkan workspace/team yang bisa diakses lalu keluar")
     p.add_argument("--list-members", action="store_true", help="Tampilkan member workspace lalu keluar")
@@ -47,6 +50,13 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"[config] {exc}", file=sys.stderr)
         return 2
+
+    if args.chapter:
+        chosen = set(args.chapter)
+        config = dataclasses.replace(config, engineers=[e for e in config.engineers if e.chapter in chosen])
+        if not config.engineers:
+            print(f"[!] Tidak ada engineer dengan chapter {sorted(chosen)}.", file=sys.stderr)
+            return 2
 
     client = ClickUpClient(config.token)
 
