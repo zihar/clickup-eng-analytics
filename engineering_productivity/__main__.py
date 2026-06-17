@@ -35,6 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="(GitLab) hitung +/- baris tanpa file noise (vendor/lock/generated); ambil diff tiap commit (lambat)")
     p.add_argument("--last-done", action="store_true",
                    help="Tampilkan tanggal task terakhir selesai per engineer (query ekstra lintas periode)")
+    p.add_argument("--utilization", action="store_true",
+                   help="Analisis engineer underutilized (WIP + story point + skor relatif tim; query open task ekstra)")
     p.add_argument("--last-done-lookback", type=int, default=365, metavar="HARI",
                    help="Batas mundur pencarian last-done (default 365)")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
@@ -79,6 +81,7 @@ def main(argv: list[str] | None = None) -> int:
             no_commits=args.no_commits,
             last_done=args.last_done,
             last_done_lookback=args.last_done_lookback,
+            utilization=args.utilization,
         )
         data = gather_report(config, opts, client=client, progress=lambda m: print(m, file=sys.stderr))
 

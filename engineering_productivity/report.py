@@ -52,6 +52,8 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
     if data.has_commit_data:
         _commit_table(lines, data.engineers, data.commit_source, data.commit_noise_filtered)
         _quadrant_table(lines, data.engineers)
+    if data.has_utilization:
+        _underutilized_table(lines, data)
     if data.deep:
         _status_flow_table(lines, data)
     _per_engineer_detail(lines, data.engineers, data.has_commit_data, data.has_last_done)
@@ -155,6 +157,38 @@ def _quadrant_table(lines: list[str], engineers: list[EngineerStats]) -> None:
     lines.append("- **Task tinggi · commit rendah:** banyak task ditutup, sedikit kode — cek kerja non-kode atau commit di email yang belum ter-alias.")
     lines.append("- **Task rendah · commit tinggi:** aktif ngoding tapi jarang update ClickUp — soal higiene task, bukan output.")
     lines.append("- **Task rendah · commit rendah:** aktivitas rendah di dua sistem — perlu klarifikasi langsung.")
+    lines.append("")
+
+
+def _underutilized_table(lines: list[str], data: ReportData) -> None:
+    lines.append("## Engineer Underutilized")
+    lines.append("")
+    signals = ", ".join(data.utilization_signals) or "—"
+    lines.append(
+        f"Skor utilisasi 0–100 **relatif ke tim** (rata-rata percentile lintas sinyal: {signals}). "
+        "**Makin rendah = makin underutilized** (kapasitas nganggur). ⚠️ = sepertiga terbawah tim. "
+        "Sinyal yang datanya kosong otomatis di-skip."
+    )
+    lines.append("")
+    engs = sorted(
+        data.engineers,
+        key=lambda e: e.utilization_score if e.utilization_score is not None else 999,
+    )
+    lines.append("| Engineer | Skor | WIP | Hari aktif | Selesai | Story point | Sinyal rendah |")
+    lines.append("|---|--:|--:|--:|--:|--:|---|")
+    for e in engs:
+        score = e.utilization_score
+        flag = "⚠️ " if (score is not None and score <= 33.3) else ""
+        low = ", ".join(e.low_signals) or "—"
+        lines.append(
+            f"| {flag}{e.name} | {_fmt(score)} | {e.open_tasks} | {e.active_days} | "
+            f"{e.completed} | {e.story_points:g} | {low} |"
+        )
+    lines.append("")
+    lines.append(
+        "> Bukan vonis kinerja: skor rendah bisa berarti **under-assigned**, lagi ke-block, beda peran, "
+        "atau email commit belum ter-alias. Pakai sebagai pemicu obrolan kapasitas."
+    )
     lines.append("")
 
 

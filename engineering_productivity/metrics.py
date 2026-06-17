@@ -82,6 +82,11 @@ class EngineerStats:
     repos_touched: int = 0
     # Tanggal task terakhir ber-status done (epoch ms), lintas periode bila diaktifkan.
     last_done_ms: int | None = None
+    # Utilisasi (diisi bila analisis utilisasi diaktifkan).
+    open_tasks: int = 0                       # WIP: task open yg di-assign
+    story_points: float = 0.0                 # Σ poin (task selesai di periode + task open)
+    utilization_score: float | None = None    # 0..100 relatif tim (rendah = underutilized)
+    low_signals: list[str] = field(default_factory=list)
 
     @property
     def last_done_date(self) -> str | None:
@@ -160,6 +165,8 @@ class ReportData:
     commit_noise_filtered: bool = False
     has_last_done: bool = False
     last_done_lookback_days: int | None = None
+    has_utilization: bool = False
+    utilization_signals: list[str] = field(default_factory=list)
 
 
 # --------------------------------------------------------------------- builder
@@ -181,6 +188,9 @@ def build_report_data(
     commit_noise_filtered: bool = False,
     last_done_ms: dict[int, int] | None = None,
     last_done_lookback_days: int | None = None,
+    open_tasks: dict[int, int] | None = None,
+    open_story_points: dict[int, float] | None = None,
+    utilization: bool = False,
 ) -> ReportData:
     stats: dict[int, EngineerStats] = {
         uid: EngineerStats(engineer_id=uid, name=id_to_name.get(uid, str(uid)))
@@ -228,12 +238,14 @@ def build_report_data(
             _accumulate_status_flow(task, time_in_status, status_flow)
 
         estimate = to_int_ms(task.get("time_estimate")) or 0
+        points = _task_points(task)
 
         for a in relevant:
             s = stats[a["id"]]
             s.completed += 1
             s.per_week[week] += 1
             s.estimate_ms += estimate
+            s.story_points += points
             if lead_days is not None:
                 s.lead_times_days.append(lead_days)
             if cycle_days is not None:
@@ -266,6 +278,20 @@ def build_report_data(
             if uid in stats:
                 stats[uid].last_done_ms = ms
 
+    # WIP & story point dari task open (snapshot), bila disediakan pipeline.
+    if open_tasks:
+        for uid, n in open_tasks.items():
+            if uid in stats:
+                stats[uid].open_tasks = n
+    if open_story_points:
+        for uid, pts in open_story_points.items():
+            if uid in stats:
+                stats[uid].story_points += pts
+
+    utilization_signals: list[str] = []
+    if utilization:
+        utilization_signals = _compute_utilization(list(stats.values()), commit_stats is not None)
+
     # Buang status terminal (mis. Done/Drop) yang lolos lewat current_status bertype None.
     for name in terminal_names:
         status_flow.pop(name, None)
@@ -292,6 +318,8 @@ def build_report_data(
         commit_noise_filtered=commit_noise_filtered,
         has_last_done=last_done_ms is not None,
         last_done_lookback_days=last_done_lookback_days,
+        has_utilization=utilization,
+        utilization_signals=utilization_signals,
     )
 
 
@@ -342,3 +370,69 @@ def _status_entry_ms(entry: dict) -> int:
         except (TypeError, ValueError):
             return 0
     return to_int_ms(total.get("since")) or 0
+
+
+def _task_points(task: dict) -> float:
+    """Story point dari field native ClickUp `points` (sprint points). 0 bila kosong."""
+    p = task.get("points")
+    if p in (None, ""):
+        return 0.0
+    try:
+        return float(p)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _percentile_rank(value: float, sorted_vals: list[float]) -> float:
+    """Posisi relatif value dalam tim: 0=terendah, 1=tertinggi. (# < value)/(n-1)."""
+    n = len(sorted_vals)
+    if n <= 1:
+        return 0.5
+    below = sum(1 for v in sorted_vals if v < value)
+    return below / (n - 1)
+
+
+# Sinyal utilisasi: (key, label, fungsi pengambil nilai). Nilai RENDAH = underutilized.
+_UTIL_SIGNALS = [
+    ("wip", "WIP", lambda e: float(e.open_tasks)),
+    ("active_days", "hari aktif", lambda e: float(e.active_days)),
+    ("throughput", "throughput", lambda e: float(e.completed)),
+    ("story_points", "story point", lambda e: float(e.story_points)),
+]
+
+
+def _compute_utilization(engineers: list[EngineerStats], has_commit_data: bool) -> list[str]:
+    """Hitung utilization_score (0..100, relatif tim) + low_signals per engineer.
+
+    Skor = rata-rata percentile rank lintas sinyal yang tersedia × 100 (rendah = underutilized).
+    Sinyal di-skip otomatis bila tak relevan/kosong. Mengembalikan daftar sinyal yang dipakai.
+    """
+    if not engineers:
+        return []
+
+    used: list[tuple[str, str, object]] = []
+    for key, label, getter in _UTIL_SIGNALS:
+        if key == "active_days" and not has_commit_data:
+            continue
+        vals = [getter(e) for e in engineers]
+        if sum(vals) <= 0:  # semua nol → tak ada data pembeda, skip
+            continue
+        used.append((key, label, getter))
+
+    if not used:
+        for e in engineers:
+            e.utilization_score = None
+        return []
+
+    sorted_by_signal = {key: sorted(getter(e) for e in engineers) for key, _, getter in used}
+    for e in engineers:
+        ranks = []
+        low = []
+        for key, label, getter in used:
+            r = _percentile_rank(getter(e), sorted_by_signal[key])
+            ranks.append(r)
+            if r <= 1 / 3:  # sepertiga terbawah pada sinyal ini
+                low.append(label)
+        e.utilization_score = round(sum(ranks) / len(ranks) * 100, 1)
+        e.low_signals = low
+    return [label for _, label, _ in used]

@@ -47,6 +47,7 @@ def gather_cached(
     exclude_noise: bool,
     no_commits: bool,
     last_done: bool,
+    utilization: bool,
 ) -> ReportData:
     cfg = load_config(config_path)
     if engineer_names:
@@ -56,6 +57,7 @@ def gather_cached(
         since=since, until=until, tz=tz, deep=deep, max_age=max_age,
         commits_source=source, no_discover=no_discover,
         exclude_noise=exclude_noise, no_commits=no_commits, last_done=last_done,
+        utilization=utilization,
     )
     return gather_report(cfg, opts)
 
@@ -116,6 +118,7 @@ source = st.sidebar.selectbox("Sumber commit", ["auto", "gitlab", "db", "none"],
 no_discover = st.sidebar.toggle("Jangan auto-discover repo", value=False)
 exclude_noise = st.sidebar.toggle("Filter file noise (+/- baris)", value=False, help="Lebih lambat: ambil diff tiap commit")
 last_done = st.sidebar.toggle("Tanggal selesai terakhir", value=False, help="Query ekstra: kapan tiap engineer terakhir menutup task (lintas periode)")
+utilization = st.sidebar.toggle("Analisis utilisasi", value=False, help="Skor underutilized relatif tim (WIP + hari aktif + throughput + story point)")
 
 if st.sidebar.button("🔄 Refresh data", width="stretch"):
     gather_cached.clear()
@@ -132,7 +135,7 @@ try:
     data = gather_cached(
         CONFIG_PATH, tuple(sel_names),
         since_d.isoformat(), until_d.isoformat(), float(tz),
-        deep, (max_age_in or None), source, no_discover, exclude_noise, source == "none", last_done,
+        deep, (max_age_in or None), source, no_discover, exclude_noise, source == "none", last_done, utilization,
     )
 except Exception as exc:  # noqa: BLE001 — tampilkan error apa pun ke UI
     st.error(f"Gagal menarik data: {exc}")
@@ -194,6 +197,28 @@ if data.has_commit_data:
 if data.weeks:
     st.subheader("Throughput per minggu")
     st.bar_chart(weekly_frame(data).T)  # index=minggu, kolom=engineer (stacked)
+
+# Engineer underutilized
+if data.has_utilization:
+    st.subheader("Engineer Underutilized")
+    st.caption(
+        f"Skor 0–100 relatif tim (sinyal: {', '.join(data.utilization_signals) or '—'}). "
+        "Makin rendah = makin underutilized. Bukan vonis kinerja — pemicu obrolan kapasitas."
+    )
+    uframe = pd.DataFrame([{
+        "Engineer": e.name,
+        "Skor": e.utilization_score,
+        "WIP": e.open_tasks,
+        "Hari aktif": e.active_days,
+        "Selesai": e.completed,
+        "Story point": e.story_points,
+        "Sinyal rendah": ", ".join(e.low_signals) or "—",
+    } for e in sorted(
+        data.engineers,
+        key=lambda e: e.utilization_score if e.utilization_score is not None else 999,
+    )])
+    st.bar_chart(uframe.set_index("Engineer")["Skor"])
+    st.dataframe(uframe, width="stretch", hide_index=True)
 
 # Bottleneck
 if data.deep and data.status_flow:

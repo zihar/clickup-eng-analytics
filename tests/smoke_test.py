@@ -266,6 +266,38 @@ assert ld["Sari"].last_done_date is None, ld["Sari"].last_done_date
 md_ld = render_markdown(data_ld, generated_at="2024-08-31 09:00 WIB")
 assert "Selesai terakhir" in md_ld and _expected_ld in md_ld
 
+
+# --- Utilisasi: skor relatif tim + auto-skip sinyal kosong ---
+def _ct(uid, pts, idx):
+    return {"id": f"u{uid}-{idx}", "date_created": str(BASE), "date_done": str(BASE + DAY),
+            "time_estimate": "0", "points": pts, "assignees": [{"id": uid}],
+            "status": {"status": "done", "type": "closed"}}
+
+util_tasks = [_ct(1, 3, 0), _ct(1, 3, 1), _ct(1, 3, 2), _ct(2, 2, 0), _ct(2, 2, 1)]
+util_commits = {1: CommitStats(commits=50, active_days=15), 2: CommitStats(commits=20, active_days=8), 3: CommitStats(commits=2, active_days=2)}
+util = build_report_data(
+    util_tasks, id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
+    time_in_status=None, time_entries=[], since="2024-05-01", until="2024-05-31", tz_offset=7,
+    commit_stats=util_commits, open_tasks={1: 10, 2: 5, 3: 1},
+    open_story_points={1: 20.0, 2: 10.0, 3: 2.0}, utilization=True,
+)
+um = {e.name: e for e in util.engineers}
+assert util.has_utilization is True
+assert set(util.utilization_signals) == {"WIP", "hari aktif", "throughput", "story point"}, util.utilization_signals
+assert (um["A"].utilization_score, um["B"].utilization_score, um["C"].utilization_score) == (100.0, 50.0, 0.0)
+assert um["A"].story_points == 29 and um["A"].open_tasks == 10, (um["A"].story_points, um["A"].open_tasks)
+assert set(um["C"].low_signals) == {"WIP", "hari aktif", "throughput", "story point"}
+assert um["A"].low_signals == []
+assert "Engineer Underutilized" in render_markdown(util, generated_at="2024-05-31 09:00 WIB")
+
+# Sinyal SP kosong -> "story point" di-skip
+util2 = build_report_data(
+    [_ct(1, 0, 0), _ct(2, 0, 0)], id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
+    time_in_status=None, time_entries=[], since="2024-05-01", until="2024-05-31", tz_offset=7,
+    commit_stats=util_commits, open_tasks={1: 10, 2: 5, 3: 1}, utilization=True,
+)
+assert "story point" not in util2.utilization_signals, util2.utilization_signals
+
 md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
 assert "Selesai terakhir" not in md  # kolom hanya muncul bila fitur aktif
 assert "# Laporan Produktivitas Engineering" in md
