@@ -9,6 +9,12 @@ token: ""
 # yang bisa diakses token-mu (jalankan dengan --list-teams untuk melihat daftarnya).
 team_id: ""
 
+# Atribusi task→engineer mengikuti custom field "Developer" (tipe users), bukan assignees.
+# Nama field di-resolve otomatis (auto-discover by name); ubah bila kolommu beda nama.
+developer_field_name: "Developer"
+# Override opsional: isi id field langsung untuk melewati auto-discover by name.
+# developer_field_id: "d3746bac-ea40-42a7-87a8-520627e1f756"
+
 # (Opsional) Sumber aktivitas commit — GitLab API langsung (LIVE). Disarankan.
 #    Token: https://git.bluebird.id/-/user_settings/personal_access_tokens (scope read_api)
 #    atau env GITLAB_TOKEN. projects = daftar id/path repo yang dianalisis.

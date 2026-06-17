@@ -142,9 +142,14 @@ Catatan: mode `--exclude-noise` belum di-cache (tetap live).
 
 ## Catatan akurasi
 
-- **Shared credit:** task dengan banyak assignee dihitung untuk tiap engineer yang ditugaskan.
-- **Time tracked** diambil dari endpoint *time entries* (akurat per orang), bukan dari
-  field `time_spent` task (yang merupakan total semua assignee).
+- **Atribusi via kolom Developer:** "siapa yang mengerjakan task" diambil dari custom field
+  **Developer** (tipe users), bukan dari `assignees`. Task dengan Developer kosong dilewati.
+  Field di-resolve otomatis by name (`developer_field_name`, default `Developer`); bisa
+  dioverride dengan `developer_field_id`.
+- **Shared credit:** task dengan banyak Developer dihitung untuk tiap engineer di kolom itu.
+- **Time tracked** diambil dari endpoint *time entries* lalu dikreditkan ke **Developer** pada
+  task time entry tersebut (bukan si pencatat), bukan dari field `time_spent` task. Catatan:
+  hanya time entry pada task yang ikut ter-fetch yang terhitung.
 - Mode `--deep` melakukan 1 panggilan API per task → lebih lambat & lebih boros kuota
   (rate limit ClickUp ~100 req/menit, sudah ditangani otomatis dengan retry).
 - Metrik ini alat bantu diskusi, **bukan** penilaian kinerja absolut. Throughput tinggi

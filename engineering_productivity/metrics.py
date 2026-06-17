@@ -21,6 +21,21 @@ TERMINAL_STATUS_TYPES = {"closed", "done"}
 
 
 # --------------------------------------------------------------------- helpers
+def task_developer_ids(task: dict, field_id: str) -> list[int]:
+    """User id dari custom field Developer (tipe users). [] bila kosong."""
+    for cf in task.get("custom_fields") or []:
+        if cf.get("id") == field_id:
+            out = []
+            for v in cf.get("value") or []:
+                vid = v.get("id") if isinstance(v, dict) else v
+                try:
+                    out.append(int(vid))
+                except (TypeError, ValueError):
+                    pass
+            return out
+    return []
+
+
 def to_int_ms(value) -> int | None:
     if value in (None, "", "null"):
         return None
@@ -171,6 +186,7 @@ class ReportData:
 def build_report_data(
     tasks: list[dict],
     *,
+    developer_field_id: str,
     id_to_name: dict[int, str],
     target_ids: set[int],
     time_in_status: dict[str, dict] | None,
@@ -220,8 +236,8 @@ def build_report_data(
             filtered_stale += 1
             continue
 
-        assignees = task.get("assignees") or []
-        relevant = [a for a in assignees if a.get("id") in target_ids]
+        dev_ids = task_developer_ids(task, developer_field_id)
+        relevant = [d for d in dev_ids if d in target_ids]
         if not relevant:
             continue
 
@@ -236,8 +252,8 @@ def build_report_data(
         estimate = to_int_ms(task.get("time_estimate")) or 0
         points = _task_points(task)
 
-        for a in relevant:
-            s = stats[a["id"]]
+        for d in relevant:
+            s = stats[d]
             s.completed += 1
             s.per_week[week] += 1
             s.estimate_ms += estimate
@@ -247,15 +263,25 @@ def build_report_data(
             if cycle_days is not None:
                 s.cycle_times_days.append(cycle_days)
 
-    # Time tracked per engineer dari entri time-tracking (akurat per orang).
+    # Time tracked dikreditkan ke Developer pada task time entry (bukan si pencatat).
+    # Map task_id -> {developer id yang jadi target} dari task yang ter-fetch.
+    task_dev = {
+        t["id"]: set(task_developer_ids(t, developer_field_id)) & target_ids
+        for t in tasks
+    }
+    tracked_skipped = 0
     for entry in time_entries:
-        user = entry.get("user") or {}
-        uid = user.get("id")
-        if uid not in stats:
-            continue
         dur = to_int_ms(entry.get("duration")) or 0
-        if dur > 0:  # abaikan timer berjalan / nilai negatif
-            stats[uid].tracked_ms += dur
+        if dur <= 0:  # abaikan timer berjalan / nilai negatif
+            continue
+        task = entry.get("task") or {}
+        tid = task.get("id")
+        devs = task_dev.get(tid)
+        if not devs:  # task di luar set yang ditarik / Developer bukan target
+            tracked_skipped += 1
+            continue
+        for d in devs:
+            stats[d].tracked_ms += dur
 
     # Gabungkan aktivitas commit GitLab (join via id ClickUp).
     if commit_stats:

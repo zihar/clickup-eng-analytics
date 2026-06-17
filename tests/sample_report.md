@@ -6,7 +6,7 @@
 - **Zona waktu bucket:** UTC+7
 - **Dibuat:** 2024-05-31 09:00 WIB
 
-> Catatan: task dengan banyak assignee dihitung untuk tiap engineer yang ditugaskan (shared credit). Cycle time hanya tersedia pada mode `--deep`.
+> Catatan: atribusi task mengikuti kolom Developer (custom field). Task dengan banyak Developer dihitung untuk tiap engineer di kolom itu (shared credit). Cycle time hanya tersedia pada mode `--deep`.
 
 ## Ringkasan per Engineer
 

@@ -34,6 +34,14 @@ from engineering_productivity.report import render_markdown
 ID_BUDI, ID_SARI = 101, 202
 id_to_name = {ID_BUDI: "Budi", ID_SARI: "Sari"}
 
+# Atribusi task→engineer via custom field "Developer" (bukan assignees).
+DEV_FIELD = "dev-field-test"
+
+
+def _dev(*ids):
+    """Bangun custom_fields dengan kolom Developer berisi user id yang diberikan."""
+    return [{"id": DEV_FIELD, "value": [{"id": i} for i in ids]}]
+
 # date_created / date_done dalam epoch ms (string, seperti respons ClickUp asli).
 DAY = 86_400_000
 BASE = 1_716_000_000_000  # ~Mei 2024
@@ -44,28 +52,28 @@ tasks = [
         "date_created": str(BASE),
         "date_done": str(BASE + 2 * DAY),
         "time_estimate": str(8 * 3_600_000),  # 8 jam
-        "assignees": [{"id": ID_BUDI, "email": "budi@x.com"}],
+        "custom_fields": _dev(ID_BUDI),
     },
     {
         "id": "t2",
         "date_created": str(BASE + 3 * DAY),
         "date_done": str(BASE + 4 * DAY),
         "time_estimate": str(4 * 3_600_000),
-        "assignees": [{"id": ID_BUDI}, {"id": ID_SARI}],  # shared credit
+        "custom_fields": _dev(ID_BUDI, ID_SARI),  # shared credit
     },
     {
         "id": "t3",
         "date_created": str(BASE + 10 * DAY),
         "date_done": str(BASE + 15 * DAY),
         "time_estimate": "0",
-        "assignees": [{"id": ID_SARI}],
+        "custom_fields": _dev(ID_SARI),
     },
     {
         # Task belum selesai -> harus diabaikan.
         "id": "t4",
         "date_created": str(BASE),
         "date_done": None,
-        "assignees": [{"id": ID_BUDI}],
+        "custom_fields": _dev(ID_BUDI),
     },
 ]
 
@@ -93,11 +101,12 @@ time_in_status = {
     },
 }
 
+# Time tracked dikreditkan ke Developer task (entry["task"]["id"]), bukan pencatat.
 time_entries = [
-    {"user": {"id": ID_BUDI}, "duration": str(10 * 3_600_000)},  # 10 jam
-    {"user": {"id": ID_SARI}, "duration": str(6 * 3_600_000)},
-    {"user": {"id": ID_SARI}, "duration": "-5000"},  # timer berjalan / negatif -> diabaikan
-    {"user": {"id": 999}, "duration": str(3_600_000)},  # bukan target -> diabaikan
+    {"user": {"id": ID_SARI}, "task": {"id": "t1"}, "duration": str(10 * 3_600_000)},  # t1 dev=Budi -> Budi 10j
+    {"user": {"id": ID_BUDI}, "task": {"id": "t3"}, "duration": str(6 * 3_600_000)},   # t3 dev=Sari -> Sari 6j
+    {"user": {"id": ID_SARI}, "task": {"id": "t3"}, "duration": "-5000"},  # negatif -> diabaikan
+    {"user": {"id": ID_BUDI}, "task": {"id": "t999"}, "duration": str(3_600_000)},  # task di luar set -> di-skip
 ]
 
 commit_stats = {
@@ -107,6 +116,7 @@ commit_stats = {
 
 data = build_report_data(
     tasks,
+    developer_field_id=DEV_FIELD,
     id_to_name=id_to_name,
     target_ids={ID_BUDI, ID_SARI},
     time_in_status=time_in_status,
@@ -223,6 +233,7 @@ assert (nb.commits, nb.additions, nb.deletions) == (1, 2, 1), (nb.commits, nb.ad
 # --- Filter --max-age: t3 (lead 5 hari) harus diabaikan bila max_age=3 ---
 data_capped = build_report_data(
     tasks,
+    developer_field_id=DEV_FIELD,
     id_to_name=id_to_name,
     target_ids={ID_BUDI, ID_SARI},
     time_in_status=time_in_status,
@@ -254,6 +265,7 @@ assert GatherOptions().days == 30 and GatherOptions().commits_source == "auto"
 # --- last_done: tanggal task terakhir selesai (lintas periode) ---
 data_ld = build_report_data(
     tasks,
+    developer_field_id=DEV_FIELD,
     id_to_name=id_to_name,
     target_ids={ID_BUDI, ID_SARI},
     time_in_status=None,
@@ -276,13 +288,13 @@ assert "Selesai terakhir" in md_ld and _expected_ld in md_ld
 # --- Utilisasi: skor relatif tim + auto-skip sinyal kosong ---
 def _ct(uid, pts, idx):
     return {"id": f"u{uid}-{idx}", "date_created": str(BASE), "date_done": str(BASE + DAY),
-            "time_estimate": "0", "points": pts, "assignees": [{"id": uid}],
+            "time_estimate": "0", "points": pts, "custom_fields": _dev(uid),
             "status": {"status": "done", "type": "closed"}}
 
 util_tasks = [_ct(1, 3, 0), _ct(1, 3, 1), _ct(1, 3, 2), _ct(2, 2, 0), _ct(2, 2, 1)]
 util_commits = {1: CommitStats(commits=50, active_days=15), 2: CommitStats(commits=20, active_days=8), 3: CommitStats(commits=2, active_days=2)}
 util = build_report_data(
-    util_tasks, id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
+    util_tasks, developer_field_id=DEV_FIELD, id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
     time_in_status=None, time_entries=[], since="2024-05-01", until="2024-05-31", tz_offset=7,
     commit_stats=util_commits, open_tasks={1: 10, 2: 5, 3: 1},
     open_story_points={1: 20.0, 2: 10.0, 3: 2.0}, utilization=True,
@@ -298,7 +310,7 @@ assert "Engineer Utilization" in render_markdown(util, generated_at="2024-05-31 
 
 # Sinyal SP kosong -> "story point" di-skip
 util2 = build_report_data(
-    [_ct(1, 0, 0), _ct(2, 0, 0)], id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
+    [_ct(1, 0, 0), _ct(2, 0, 0)], developer_field_id=DEV_FIELD, id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
     time_in_status=None, time_entries=[], since="2024-05-01", until="2024-05-31", tz_offset=7,
     commit_stats=util_commits, open_tasks={1: 10, 2: 5, 3: 1}, utilization=True,
 )

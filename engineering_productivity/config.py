@@ -34,6 +34,8 @@ class Config:
     team_id: str | None = None
     gitlab: GitlabConfig | None = None
     store_dsn: str | None = None  # Postgres cache (time_in_status + commit); opsional
+    developer_field_id: str | None = None  # override; bila None di-resolve by name
+    developer_field_name: str = "Developer"  # nama custom field untuk auto-discover
     extra: dict = field(default_factory=dict)
 
     @property
@@ -96,6 +98,8 @@ def load_config(path: str | Path) -> Config:
         team_id=str(raw["team_id"]) if raw.get("team_id") else None,
         gitlab=gitlab,
         store_dsn=store_dsn,
+        developer_field_id=raw.get("developer_field_id") or None,
+        developer_field_name=raw.get("developer_field_name") or "Developer",
     )
 
 

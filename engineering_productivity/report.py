@@ -34,8 +34,9 @@ def render_markdown(data: ReportData, *, generated_at: str) -> str:
     lines.append(f"- **Dibuat:** {generated_at}")
     lines.append("")
     lines.append(
-        "> Catatan: task dengan banyak assignee dihitung untuk tiap engineer yang "
-        "ditugaskan (shared credit). Cycle time hanya tersedia pada mode `--deep`."
+        "> Catatan: atribusi task mengikuti kolom Developer (custom field). Task dengan "
+        "banyak Developer dihitung untuk tiap engineer di kolom itu (shared credit). "
+        "Cycle time hanya tersedia pada mode `--deep`."
     )
     lines.append("")
 

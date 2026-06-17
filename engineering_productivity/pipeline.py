@@ -16,7 +16,7 @@ from .client import ClickUpClient, ClickUpError
 from .config import Config
 from .gitlab import GitLabClient, GitLabError, discover_project_ids
 from .gitlab import fetch_commit_stats as gl_fetch_commit_stats
-from .metrics import ReportData, build_report_data
+from .metrics import ReportData, build_report_data, task_developer_ids
 from .models import CommitStats
 from .store import Store, StoreError
 
@@ -50,6 +50,21 @@ def parse_date(text: str, tz_offset: float, *, end_of_day: bool = False) -> int:
     if end_of_day:
         dt = dt.replace(hour=23, minute=59, second=59)
     return int(dt.timestamp() * 1000)
+
+
+def _resolve_developer_field(client: ClickUpClient, team_id: str, field_name: str) -> str:
+    """Cari id custom field 'Developer' by name (case-insensitive) di workspace."""
+    fields = client.get_team_fields(team_id)
+    target = (field_name or "").strip().lower()
+    for f in fields:
+        if (f.get("name") or "").strip().lower() == target:
+            return str(f["id"])
+    available = [f.get("name") for f in fields]
+    raise ClickUpError(
+        f"Custom field '{field_name}' tidak ditemukan di workspace {team_id}. "
+        f"Set 'developer_field_id' di config atau perbaiki 'developer_field_name'. "
+        f"Field tersedia: {available}"
+    )
 
 
 def resolve_targets(config: Config, members: list[dict], progress: Progress = _noop) -> tuple[set[int], dict[int, str]]:
@@ -130,6 +145,12 @@ def gather_report(
     if members is None:
         members = client.get_members(team_id)
 
+    # Atribusi task→engineer lewat custom field "Developer". Field id di-resolve
+    # sekali per run: override config kalau ada, jika tidak auto-discover by name.
+    dev_field_id = config.developer_field_id or _resolve_developer_field(
+        client, team_id, config.developer_field_name
+    )
+
     # Cache DB (opsional): time_in_status + commit. Fallback live bila tak terjangkau.
     own_store = False
     if store is None and config.store_dsn:
@@ -153,7 +174,8 @@ def gather_report(
     tasks = list(
         client.iter_team_tasks(
             team_id,
-            assignee_ids=sorted(target_ids),
+            developer_field_id=dev_field_id,
+            developer_ids=sorted(target_ids),
             date_done_gt=date_done_gt,
             date_done_lt=date_done_lt,
         )
@@ -231,7 +253,8 @@ def gather_report(
         last_done_ms = {}
         for t in client.iter_team_tasks(
             team_id,
-            assignee_ids=sorted(target_ids),
+            developer_field_id=dev_field_id,
+            developer_ids=sorted(target_ids),
             date_done_gt=parse_date(lookback_lo, opts.tz),
             date_done_lt=date_done_lt,
         ):
@@ -240,8 +263,7 @@ def gather_report(
                 dd = int(raw)
             except (TypeError, ValueError):
                 continue
-            for a in t.get("assignees") or []:
-                aid = a.get("id")
+            for aid in task_developer_ids(t, dev_field_id):
                 if aid in target_ids and dd > last_done_ms.get(aid, 0):
                     last_done_ms[aid] = dd
 
@@ -250,20 +272,25 @@ def gather_report(
     if opts.utilization:
         progress("[*] Menarik task open (WIP & story point) ...")
         open_tasks_count, open_story_points = {}, {}
-        for t in client.iter_team_tasks(team_id, assignee_ids=sorted(target_ids), include_closed=False):
+        for t in client.iter_team_tasks(
+            team_id,
+            developer_field_id=dev_field_id,
+            developer_ids=sorted(target_ids),
+            include_closed=False,
+        ):
             raw = t.get("points")
             try:
                 pts = float(raw) if raw not in (None, "") else 0.0
             except (TypeError, ValueError):
                 pts = 0.0
-            for a in t.get("assignees") or []:
-                aid = a.get("id")
+            for aid in task_developer_ids(t, dev_field_id):
                 if aid in target_ids:
                     open_tasks_count[aid] = open_tasks_count.get(aid, 0) + 1
                     open_story_points[aid] = open_story_points.get(aid, 0.0) + pts
 
     data = build_report_data(
         tasks,
+        developer_field_id=dev_field_id,
         id_to_name=id_to_name,
         target_ids=target_ids,
         time_in_status=time_in_status,

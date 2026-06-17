@@ -6,6 +6,7 @@ Dok API: https://clickup.com/api
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any, Iterator
 
@@ -77,21 +78,26 @@ class ClickUpClient:
                 return [m["user"] for m in t.get("members", [])]
         return []
 
+    def get_team_fields(self, team_id: str) -> list[dict]:
+        """Kembalikan semua custom field workspace (untuk resolve field 'Developer' by name)."""
+        return self._get(f"/team/{team_id}/field").get("fields", [])
+
     # ---------------------------------------------------------------- Tasks
     def iter_team_tasks(
         self,
         team_id: str,
         *,
-        assignee_ids: list[int],
+        developer_field_id: str,
+        developer_ids: list[int],
         date_done_gt: int | None = None,
         date_done_lt: int | None = None,
         include_closed: bool = True,
         subtasks: bool = True,
     ) -> Iterator[dict]:
-        """Iterasi task pada workspace, terfilter assignee + rentang tanggal selesai.
+        """Iterasi task pada workspace, terfilter custom field 'Developer' + rentang tanggal selesai.
 
-        Memakai endpoint 'filtered team tasks' yang memang dirancang untuk query
-        lintas space dengan filter assignee.
+        Memakai endpoint 'filtered team tasks' dengan filter server-side custom_fields
+        agar atribusi task→engineer mengikuti kolom Developer (bukan assignee).
         """
         page = 0
         while True:
@@ -101,8 +107,9 @@ class ClickUpClient:
                 "subtasks": str(subtasks).lower(),
                 "order_by": "updated",
             }
-            for uid in assignee_ids:
-                params.setdefault("assignees[]", []).append(uid)
+            params["custom_fields"] = json.dumps(
+                [{"field_id": developer_field_id, "operator": "ANY", "value": list(developer_ids)}]
+            )
             if date_done_gt is not None:
                 params["date_done_gt"] = date_done_gt
             if date_done_lt is not None:
