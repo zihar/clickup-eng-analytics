@@ -28,6 +28,12 @@ db:
 #
 # Pilih sumber saat run dengan --commits-source {auto,gitlab,db,none} (default auto: gitlab > db).
 
+# (Opsional) Cache Postgres: simpan time_in_status (deep) & commit agar load berikutnya cepat
+# (incremental — hanya delta yang ditarik; data done/immutable tak diulang). Bisa via env EP_STORE_DSN.
+# Buat dulu database-nya: `createdb engineering_productivity`. Tanpa DSN = mode live (tanpa cache).
+store:
+  dsn: ""  # contoh: postgres://localhost:5432/engineering_productivity
+
 # Daftar engineer yang mau dianalisis. Boleh pakai email ATAU id numerik.
 # Email akan di-resolve otomatis ke id lewat daftar member workspace.
 engineers:

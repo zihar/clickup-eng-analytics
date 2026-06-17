@@ -133,6 +133,21 @@ Dashboard memakai pipeline yang sama dengan CLI (`engineering_productivity.pipel
 > Jalankan hanya di localhost — berisi data produktivitas karyawan. `deep` & filter noise
 > membuat tiap interaksi lebih lambat (default keduanya OFF; hasil di-cache).
 
+## Cache Postgres (opsional, biar load cepat)
+
+Tanpa cache, tiap run/load menarik ulang semua dari ClickUp & GitLab — paling mahal di mode `--deep`
+(1 call/task) dan commit GitLab (ratusan call). Aktifkan cache Postgres agar data **immutable**
+(time_in_status task *done* & commit per sha) disimpan dan dipakai ulang; tiap load hanya menarik **delta**.
+
+```bash
+createdb engineering_productivity          # database terpisah di Postgres-mu
+export EP_STORE_DSN=postgres://localhost:5432/engineering_productivity
+```
+
+Atau isi `store.dsn` di `config.yaml`. Otomatis aktif bila DSN ada; tanpa DSN = mode live (perilaku lama).
+Run/dashboard kedua untuk parameter sama jadi jauh lebih cepat (deep dari cache, commit cuma yang baru).
+Catatan: mode `--exclude-noise` belum di-cache (tetap live).
+
 ## Catatan akurasi
 
 - **Shared credit:** task dengan banyak assignee dihitung untuk tiap engineer yang ditugaskan.
