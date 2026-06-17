@@ -178,7 +178,7 @@ source = st.sidebar.selectbox("Sumber commit", ["auto", "gitlab", "db", "none"],
 no_discover = st.sidebar.toggle("Jangan auto-discover repo", value=False)
 exclude_noise = st.sidebar.toggle("Filter file noise (+/- baris)", value=False, help="Lebih lambat: ambil diff tiap commit")
 last_done = st.sidebar.toggle("Tanggal selesai terakhir", value=False, help="Query ekstra: kapan tiap engineer terakhir menutup task (lintas periode)")
-utilization = st.sidebar.toggle("Analisis utilisasi", value=False, help="Skor underutilized relatif tim (WIP + hari aktif + throughput + story point)")
+utilization = st.sidebar.toggle("Analisis utilisasi", value=True, help="Fitur utama (default nyala): skor underutilized relatif tim (WIP + hari aktif + throughput + story point). Matikan untuk load lebih cepat (skip query task open).")
 
 if st.sidebar.button("🔄 Refresh data", width="stretch"):
     gather_cached.clear()
