@@ -192,13 +192,23 @@ except Exception as exc:  # noqa: BLE001 — tampilkan error apa pun ke UI
     st.error(f"Gagal menarik data: {exc}")
     st.stop()
 
-# KPI
-c1, c2, c3, c4 = st.columns(4)
+# Periode — caption rapi (tak kepotong seperti di dalam metric)
+_BULAN = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
+
+
+def _tgl(iso: str) -> str:
+    y, m, d = iso.split("-")
+    return f"{int(d)} {_BULAN[int(m)]} {y}"
+
+
+st.subheader(f"📅 {_tgl(data.since)} – {_tgl(data.until)}  ·  {(until_d - since_d).days + 1} hari")
+
+# KPI — angka saja (3 kolom, tak ada yang terpotong)
+c1, c2, c3 = st.columns(3)
 c1.metric("Total task selesai", data.total_tasks)
 c2.metric("Engineer", len(data.engineers))
 total_commits = sum(e.commits for e in data.engineers)
 c3.metric("Total commit", total_commits if data.has_commit_data else "—")
-c4.metric("Periode", f"{data.since} → {data.until}")
 
 if data.has_commit_data:
     st.caption(f"Sumber commit: {data.commit_source}")
