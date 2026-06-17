@@ -39,6 +39,9 @@ class GatherOptions:
     no_discover: bool = False
     exclude_noise: bool = False
     no_commits: bool = False
+    last_done: bool = False          # hitung tanggal task terakhir selesai (lintas periode)
+    last_done_lookback: int = 365    # batas mundur pencarian last-done (hari)
+    utilization: bool = False        # analisis utilisasi (WIP + story point + skor relatif)
 
 
 def parse_date(text: str, tz_offset: float, *, end_of_day: bool = False) -> int:
@@ -228,6 +231,46 @@ def gather_report(
             progress(f"    [!] Commit dilewati (DB tak terjangkau): {exc}")
             commit_stats = None
 
+    last_done_ms: dict[int, int] | None = None
+    if opts.last_done:
+        lookback_lo = (
+            datetime.strptime(until_str, "%Y-%m-%d") - timedelta(days=opts.last_done_lookback)
+        ).strftime("%Y-%m-%d")
+        progress(f"[*] Mencari tanggal task terakhir selesai (lookback {opts.last_done_lookback} hari) ...")
+        last_done_ms = {}
+        for t in client.iter_team_tasks(
+            team_id,
+            assignee_ids=sorted(target_ids),
+            date_done_gt=parse_date(lookback_lo, opts.tz),
+            date_done_lt=date_done_lt,
+        ):
+            raw = t.get("date_done") or t.get("date_closed")
+            try:
+                dd = int(raw)
+            except (TypeError, ValueError):
+                continue
+            for a in t.get("assignees") or []:
+                aid = a.get("id")
+                if aid in target_ids and dd > last_done_ms.get(aid, 0):
+                    last_done_ms[aid] = dd
+
+    open_tasks_count: dict[int, int] | None = None
+    open_story_points: dict[int, float] | None = None
+    if opts.utilization:
+        progress("[*] Menarik task open (WIP & story point) ...")
+        open_tasks_count, open_story_points = {}, {}
+        for t in client.iter_team_tasks(team_id, assignee_ids=sorted(target_ids), include_closed=False):
+            raw = t.get("points")
+            try:
+                pts = float(raw) if raw not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                pts = 0.0
+            for a in t.get("assignees") or []:
+                aid = a.get("id")
+                if aid in target_ids:
+                    open_tasks_count[aid] = open_tasks_count.get(aid, 0) + 1
+                    open_story_points[aid] = open_story_points.get(aid, 0.0) + pts
+
     return build_report_data(
         tasks,
         id_to_name=id_to_name,
@@ -243,4 +286,9 @@ def gather_report(
         commit_synced_at=commit_synced_at,
         commit_source=commit_source,
         commit_noise_filtered=bool(commit_stats is not None and source == "gitlab" and opts.exclude_noise),
+        last_done_ms=last_done_ms,
+        last_done_lookback_days=opts.last_done_lookback if opts.last_done else None,
+        open_tasks=open_tasks_count,
+        open_story_points=open_story_points,
+        utilization=opts.utilization,
     )

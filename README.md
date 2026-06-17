@@ -19,6 +19,7 @@ menghasilkan **laporan Markdown** siap di-share ke management.
 | **Status flow / bottleneck** | Median/p90 lama task nyangkut di tiap status (status terminal dikecualikan). Butuh `--deep`. |
 | **Aktivitas commit (GitLab)** | Commit, hari aktif, +/- baris, & repo per engineer. Sumber: GitLab API langsung (live) atau DB squad-scorecard. Opsional. |
 | **Matriks task vs commit** | Kuadran 2×2 (throughput ClickUp × hari aktif commit) untuk lihat pola disiplin task vs output kode. |
+| **Utilisasi (underutilized)** | Skor 0–100 relatif tim dari 4 sinyal (WIP, hari aktif commit, throughput, story point) untuk menandai engineer berkapasitas nganggur. Opsional. |
 
 ## Setup
 
@@ -106,7 +107,13 @@ python -m engineering_productivity --since 2026-05-01 --until 2026-05-31 --deep 
 | `--days` | `30` | Lookback bila `--since` kosong |
 | `--tz` | `7` | Offset zona waktu untuk bucket minggu (7 = WIB) |
 | `--deep` | off | Ambil `time_in_status` per task → cycle time & bottleneck |
+| `--last-done` | off | Tambah kolom *Selesai terakhir* (kapan tiap engineer terakhir menutup task, lintas periode) |
+| `--utilization` | off | Section *Engineer Underutilized* (skor relatif tim; tarik WIP & story point) |
 | `-o`, `--output` | `reports/report.md` | File output |
+
+> **Utilisasi:** skor 0–100 = rata-rata percentile lintas sinyal (makin rendah makin underutilized).
+> Story point dibaca dari field native ClickUp `points` (sprint points); sinyal yang datanya kosong
+> otomatis di-skip. Ini pemicu obrolan kapasitas, **bukan** ranking kinerja.
 
 ## Dashboard interaktif
 
