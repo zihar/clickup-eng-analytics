@@ -258,9 +258,9 @@ _members = [{"id": 101, "email": "budi@x.com", "username": "budi"}]
 _ids, _names = resolve_targets(_cfg, _members)
 assert _ids == {101, 202}, _ids                       # Budi via email, Sari via id
 assert _names[101] == "Budi" and _names[202] == "Sari"
-assert resolve_commit_source("auto", _cfg) == "gitlab"  # gitlab terkonfigurasi -> diutamakan
-assert resolve_commit_source("none", _cfg) == "none"
-assert GatherOptions().days == 30 and GatherOptions().commits_source == "auto"
+assert resolve_commit_source(_cfg) == "gitlab"  # gitlab terkonfigurasi -> aktif
+assert resolve_commit_source(Config(token="x", engineers=[])) == "none"  # tanpa gitlab
+assert GatherOptions().days == 30 and GatherOptions().utilization is True  # utilisasi default nyala
 
 # --- last_done: tanggal task terakhir selesai (lintas periode) ---
 data_ld = build_report_data(
@@ -318,7 +318,7 @@ assert "story point" not in util2.utilization_signals, util2.utilization_signals
 
 # --- Cache DB (Fase 1): coverage gaps, agregasi, dan reuse time_in_status ---
 assert _coverage_gaps(None, "2024-05-01", "2024-05-31") == [("2024-05-01", "2024-05-31")]
-assert _coverage_gaps(("2024-05-01", "2024-05-31"), "2024-05-01", "2024-05-31") == []  # full cover
+assert _coverage_gaps(("2024-05-01", "2024-05-31"), "2024-05-01", "2024-05-31") == [("2024-05-30", "2024-05-31")]  # hari terakhir selalu di-refetch
 assert _coverage_gaps(("2024-05-10", "2024-05-20"), "2024-05-01", "2024-05-31") == [
     ("2024-05-01", "2024-05-10"), ("2024-05-20", "2024-05-31")]
 
@@ -398,10 +398,10 @@ class _GLForStore:
 _cstore, _gl = _FakeStore(), _GLForStore()
 _r1 = _commits_via_store(_gl, _cstore, ["10"], {"budi@x.com": ID_BUDI}, "2024-05-01", "2024-05-31", lambda m: None)
 assert _gl.fetches == 1 and _r1[ID_BUDI].commits == 1, (_gl.fetches, _r1)
-# Window sama lagi → sudah ter-cover → tidak ada fetch baru, hasil tetap dari cache
+# Window sama lagi → hari terakhir SELALU di-refetch (fresh hari ini), tapi commit dedup by sha.
 _r2 = _commits_via_store(_gl, _cstore, ["10"], {"budi@x.com": ID_BUDI}, "2024-05-01", "2024-05-31", lambda m: None)
-assert _gl.fetches == 1, _gl.fetches
-assert _r2[ID_BUDI].commits == 1
+assert _gl.fetches == 2, _gl.fetches            # +1 fetch: refetch hari terakhir
+assert _r2[ID_BUDI].commits == 1                # dedup by sha → tetap 1
 
 md = render_markdown(data, generated_at="2024-05-31 09:00 WIB")
 assert "Selesai terakhir" not in md  # kolom hanya muncul bila fitur aktif

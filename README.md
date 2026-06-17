@@ -51,7 +51,7 @@ engineers:
 
 ### (Opsional) Aktivitas commit GitLab
 
-Pilih dengan `--commits-source {auto,gitlab,none}` (default `auto`: GitLab bila terkonfigurasi):
+Commit selalu diambil dari **GitLab API** (live) bila GitLab terkonfigurasi; tanpa itu, metrik commit dilewati.
 
 **GitLab API langsung (live)** — selalu mutakhir, plus +/- baris asli.
 Generate token di `https://git.bluebird.id/-/user_settings/personal_access_tokens`
@@ -73,7 +73,6 @@ generated, dll — lihat `DEFAULT_NOISE_PATTERNS`; tambah lewat `gitlab.noise_pa
 Ini mengambil diff tiap commit (1 call/commit) sehingga **lebih lambat**, jadi opsional.
 
 Tool menambah section **Aktivitas Commit** + **Matriks Task vs Commit**, join lewat id ClickUp.
-Matikan fitur commit dengan `--no-commits`.
 
 Lihat id/email member workspace:
 
@@ -97,7 +96,6 @@ python -m engineering_productivity --since 2026-05-01 --until 2026-05-31 --deep 
 | `--config` | `config.yaml` | Path konfigurasi |
 | `--since` / `--until` | — / hari ini | Rentang tanggal `YYYY-MM-DD` |
 | `--days` | `30` | Lookback bila `--since` kosong |
-| `--tz` | `7` | Offset zona waktu untuk bucket minggu (7 = WIB) |
 | `--deep` | off | Ambil `time_in_status` per task → cycle time & bottleneck |
 | `--last-done` | off | Tambah kolom *Selesai terakhir* (kapan tiap engineer terakhir menutup task, lintas periode) |
 | `--utilization` | off | Section *Engineer Underutilized* (skor relatif tim; tarik WIP & story point) |
@@ -117,7 +115,7 @@ export CLICKUP_TOKEN=pk_...        # dan GITLAB_TOKEN=glpat-... bila pakai sumbe
 streamlit run dashboard.py
 ```
 
-Fitur: filter periode & engineer, toggle `deep`/filter task basi/sumber commit/filter noise,
+Fitur: filter periode & engineer, toggle `deep`/filter task basi/filter noise,
 KPI ringkas, chart throughput & hari-aktif, **matriks Task vs Commit** interaktif (Plotly),
 tabel bottleneck, dan tombol unduh laporan Markdown. Tombol **Refresh data** mengosongkan cache.
 Dashboard memakai pipeline yang sama dengan CLI (`engineering_productivity.pipeline.gather_report`).

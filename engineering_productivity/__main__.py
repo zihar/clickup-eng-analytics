@@ -23,20 +23,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--since", help="Tanggal mulai YYYY-MM-DD (default: --days lalu)")
     p.add_argument("--until", help="Tanggal akhir YYYY-MM-DD (default: hari ini)")
     p.add_argument("--days", type=int, default=30, help="Lookback hari bila --since kosong (default 30)")
-    p.add_argument("--tz", type=float, default=7.0, help="Offset zona waktu untuk bucket minggu (default 7 = WIB)")
     p.add_argument("--deep", action="store_true", help="Ambil time_in_status per task (cycle time & bottleneck; lebih banyak API call)")
     p.add_argument("--max-age", type=int, default=None, metavar="HARI", help="Abaikan task basi: lead time (dibuat->selesai) lebih dari N hari")
-    p.add_argument("--no-commits", action="store_true", help="Lewati aktivitas commit sepenuhnya")
-    p.add_argument("--commits-source", choices=["auto", "gitlab", "none"], default="auto",
-                   help="Sumber commit: gitlab (live API), auto (gitlab bila terkonfigurasi), none")
     p.add_argument("--no-discover", action="store_true",
                    help="(GitLab) jangan auto-discover repo per engineer; pakai daftar gitlab.projects saja")
     p.add_argument("--exclude-noise", action="store_true",
                    help="(GitLab) hitung +/- baris tanpa file noise (vendor/lock/generated); ambil diff tiap commit (lambat)")
     p.add_argument("--last-done", action="store_true",
                    help="Tampilkan tanggal task terakhir selesai per engineer (query ekstra lintas periode)")
-    p.add_argument("--utilization", action="store_true",
-                   help="Analisis engineer underutilized (WIP + story point + skor relatif tim; query open task ekstra)")
     p.add_argument("--last-done-lookback", type=int, default=365, metavar="HARI",
                    help="Batas mundur pencarian last-done (default 365)")
     p.add_argument("-o", "--output", default="reports/report.md", help="File output Markdown")
@@ -72,20 +66,16 @@ def main(argv: list[str] | None = None) -> int:
             since=args.since,
             until=args.until,
             days=args.days,
-            tz=args.tz,
             deep=args.deep,
             max_age=args.max_age,
-            commits_source=args.commits_source,
             no_discover=args.no_discover,
             exclude_noise=args.exclude_noise,
-            no_commits=args.no_commits,
             last_done=args.last_done,
             last_done_lookback=args.last_done_lookback,
-            utilization=args.utilization,
         )
         data = gather_report(config, opts, client=client, progress=lambda m: print(m, file=sys.stderr))
 
-        now = datetime.now(timezone(timedelta(hours=args.tz)))
+        now = datetime.now(timezone(timedelta(hours=7)))
         markdown = render_markdown(data, generated_at=now.strftime("%Y-%m-%d %H:%M %Z"))
         out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)

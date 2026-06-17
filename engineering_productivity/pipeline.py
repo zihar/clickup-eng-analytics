@@ -32,16 +32,15 @@ class GatherOptions:
     since: str | None = None
     until: str | None = None
     days: int = 30
-    tz: float = 7.0
+    tz: float = 7.0                   # WIB tetap (+7); tidak diekspos ke UI/CLI
     deep: bool = False
     max_age: int | None = None
-    commits_source: str = "auto"  # auto | gitlab | none
     no_discover: bool = False
     exclude_noise: bool = False
-    no_commits: bool = False
+    no_commits: bool = False          # commit selalu dari GitLab; True hanya untuk mematikan
     last_done: bool = False          # hitung tanggal task terakhir selesai (lintas periode)
     last_done_lookback: int = 365    # batas mundur pencarian last-done (hari)
-    utilization: bool = False        # analisis utilisasi (WIP + story point + skor relatif)
+    utilization: bool = True         # fitur utama: selalu nyala
 
 
 def parse_date(text: str, tz_offset: float, *, end_of_day: bool = False) -> int:
@@ -91,16 +90,9 @@ def resolve_targets(config: Config, members: list[dict], progress: Progress = _n
     return target_ids, id_to_name
 
 
-def resolve_commit_source(choice: str, config: Config) -> str:
-    """Tentukan sumber commit efektif. 'auto' utamakan GitLab (live)."""
-    if choice == "gitlab":
-        return "gitlab" if config.gitlab else "none"
-    if choice == "none":
-        return "none"
-    # auto
-    if config.gitlab:
-        return "gitlab"
-    return "none"
+def resolve_commit_source(config: Config) -> str:
+    """Sumber commit hanya GitLab (live) — aktif bila GitLab terkonfigurasi."""
+    return "gitlab" if config.gitlab else "none"
 
 
 def build_gitlab_email_map(config: Config, members: list[dict]) -> dict[str, int]:
@@ -200,7 +192,7 @@ def gather_report(
 
     commit_stats = None
     commit_source = None
-    source = "none" if opts.no_commits else resolve_commit_source(opts.commits_source, config)
+    source = "none" if opts.no_commits else resolve_commit_source(config)
 
     if source == "gitlab":
         commit_source = "GitLab API (live)"
@@ -341,10 +333,17 @@ def _fetch_time_in_status(client, tasks: list[dict], store, progress: Progress) 
 
 
 def _coverage_gaps(cov: tuple[str, str] | None, since: str, until: str) -> list[tuple[str, str]]:
-    """Rentang [since,until] yang belum ter-cover oleh (earliest,latest). Tanggal YYYY-MM-DD."""
+    """Rentang [since,until] yang belum ter-cover oleh (earliest,latest). Tanggal YYYY-MM-DD.
+
+    Hari terakhir (until) SELALU dianggap belum ter-cover supaya commit terbaru hari ini
+    ikut ter-tarik walau di-run berkali-kali di hari yang sama.
+    """
     if cov is None:
         return [(since, until)]
     earliest, latest = cov
+    until_prev = (datetime.strptime(until, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    if latest > until_prev:
+        latest = until_prev  # batasi agar [latest, until] selalu mencakup hari terakhir
     gaps = []
     if since < earliest:
         gaps.append((since, earliest))

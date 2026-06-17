@@ -85,26 +85,20 @@ def gather_cached(
     engineer_names: tuple[str, ...],
     since: str,
     until: str,
-    tz: float,
     deep: bool,
     max_age: int | None,
-    source: str,
     no_discover: bool,
     exclude_noise: bool,
-    no_commits: bool,
     last_done: bool,
-    utilization: bool,
 ) -> ReportData:
     cfg = load_config(config_path)
     if engineer_names:
         chosen = set(engineer_names)
         cfg = dataclasses.replace(cfg, engineers=[e for e in cfg.engineers if e.name in chosen])
     opts = GatherOptions(
-        since=since, until=until, tz=tz, deep=deep, max_age=max_age,
-        commits_source=source, no_discover=no_discover,
-        exclude_noise=exclude_noise, no_commits=no_commits, last_done=last_done,
-        utilization=utilization,
-    )
+        since=since, until=until, deep=deep, max_age=max_age,
+        no_discover=no_discover, exclude_noise=exclude_noise, last_done=last_done,
+    )  # tz=+7, utilisasi & commit GitLab selalu nyala (default)
     return gather_report(cfg, opts)
 
 
@@ -171,14 +165,11 @@ if isinstance(rng, tuple) and len(rng) == 2:
 else:
     since_d, until_d = default_start, today
 
-tz = st.sidebar.number_input("Offset zona waktu (UTC+)", value=7.0, step=1.0)
 deep = st.sidebar.toggle("Deep (cycle time & bottleneck)", value=False, help="Lebih lambat: 1 API call per task")
 max_age_in = st.sidebar.number_input("Abaikan task basi > N hari (0 = nonaktif)", value=60, min_value=0, step=10)
-source = st.sidebar.selectbox("Sumber commit", ["auto", "gitlab", "db", "none"], index=0)
 no_discover = st.sidebar.toggle("Jangan auto-discover repo", value=False)
 exclude_noise = st.sidebar.toggle("Filter file noise (+/- baris)", value=False, help="Lebih lambat: ambil diff tiap commit")
 last_done = st.sidebar.toggle("Tanggal selesai terakhir", value=False, help="Query ekstra: kapan tiap engineer terakhir menutup task (lintas periode)")
-utilization = st.sidebar.toggle("Analisis utilisasi", value=True, help="Fitur utama (default nyala): skor underutilized relatif tim (WIP + hari aktif + throughput + story point). Matikan untuk load lebih cepat (skip query task open).")
 
 if st.sidebar.button("🔄 Refresh data", width="stretch"):
     gather_cached.clear()
@@ -194,8 +185,8 @@ if not sel_names:
 try:
     data = gather_cached(
         CONFIG_PATH, tuple(sel_names),
-        since_d.isoformat(), until_d.isoformat(), float(tz),
-        deep, (max_age_in or None), source, no_discover, exclude_noise, source == "none", last_done, utilization,
+        since_d.isoformat(), until_d.isoformat(),
+        deep, (max_age_in or None), no_discover, exclude_noise, last_done,
     )
 except Exception as exc:  # noqa: BLE001 — tampilkan error apa pun ke UI
     st.error(f"Gagal menarik data: {exc}")
@@ -319,6 +310,6 @@ if data.weeks:
     st.bar_chart(pd.Series({w: e.per_week.get(w, 0) for w in data.weeks}))
 
 # Download Markdown
-now = datetime.now(timezone(timedelta(hours=float(tz))))
+now = datetime.now(timezone(timedelta(hours=7)))  # WIB
 md = render_markdown(data, generated_at=now.strftime("%Y-%m-%d %H:%M %Z"))
 st.download_button("⬇️ Download laporan Markdown", md, file_name="report.md", mime="text/markdown")

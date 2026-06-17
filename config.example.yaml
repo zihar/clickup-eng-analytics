@@ -25,7 +25,7 @@ gitlab:
   aliases: {}           # mis. {"orang@gmail.com": "orang@bluebirdgroup.com"}
   noise_patterns: []    # tambahan pola file noise (di luar default vendor/lock/generated)
 #
-# Pilih sumber saat run dengan --commits-source {auto,gitlab,none} (default auto: gitlab bila terkonfigurasi).
+# Commit selalu dari GitLab (bila terkonfigurasi di atas); tanpa GitLab, metrik commit dilewati.
 
 # (Opsional) Cache Postgres: simpan time_in_status (deep) & commit agar load berikutnya cepat
 # (incremental — hanya delta yang ditarik; data done/immutable tak diulang). Bisa via env EP_STORE_DSN.
