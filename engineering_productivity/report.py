@@ -161,7 +161,7 @@ def _quadrant_table(lines: list[str], engineers: list[EngineerStats]) -> None:
 
 
 def _underutilized_table(lines: list[str], data: ReportData) -> None:
-    lines.append("## Engineer Underutilized")
+    lines.append("## Engineer Utilization")
     lines.append("")
     signals = ", ".join(data.utilization_signals) or "—"
     lines.append(

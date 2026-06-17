@@ -32,6 +32,52 @@ CONFIG_PATH = os.environ.get("EP_CONFIG", "config.yaml")
 
 st.set_page_config(page_title="Engineering Productivity", page_icon="📊", layout="wide")
 
+# Sumber data tiap kolom — dipakai sebagai tooltip "?" di header tabel.
+COLUMN_HELP = {
+    "Engineer": "Nama dari daftar engineer (member ClickUp).",
+    "Selesai": "ClickUp — task berstatus done dengan tanggal selesai dalam periode.",
+    "Selesai terakhir": "ClickUp — tanggal task terakhir berstatus done (lintas periode, mode --last-done).",
+    "Lead median (hari)": "ClickUp — median (tanggal selesai − tanggal dibuat).",
+    "Cycle median (hari)": "ClickUp time_in_status (mode Deep) — median waktu di status aktif.",
+    "Tracked (jam)": "ClickUp time entries (time tracking) — butuh izin workspace.",
+    "Commits": "GitLab — jumlah commit (dicocokkan via email penulis).",
+    "Hari aktif": "GitLab — jumlah hari yang ada commit.",
+    "Repo": "GitLab — jumlah repo yang disentuh.",
+    "+Baris": "GitLab — baris ditambah (mentah, atau tanpa noise bila filter aktif).",
+    "-Baris": "GitLab — baris dihapus (mentah, atau tanpa noise bila filter aktif).",
+    "WIP": "ClickUp — jumlah task open (belum done) yang di-assign ke engineer.",
+    "Story point": "ClickUp — field native 'points' (sprint point) dari task selesai + open.",
+    "Skor": "Dihitung — rata-rata percentile lintas sinyal (0–100; makin rendah = makin underutilized).",
+    "Sinyal rendah": "Sinyal di mana engineer ada di sepertiga terbawah tim.",
+}
+_NUMERIC = {"Selesai", "Lead median (hari)", "Cycle median (hari)", "Tracked (jam)", "Commits",
+            "Hari aktif", "Repo", "+Baris", "-Baris", "WIP", "Story point"}
+
+
+def cols(df: pd.DataFrame) -> dict:
+    """Bangun column_config (tooltip sumber data + format) untuk kolom yang ada di df."""
+    cfg = {}
+    for c in df.columns:
+        h = COLUMN_HELP.get(c)
+        if c == "Skor":
+            cfg[c] = st.column_config.ProgressColumn(c, help=h, min_value=0, max_value=100, format="%.0f")
+        elif c in _NUMERIC:
+            cfg[c] = st.column_config.NumberColumn(c, help=h)
+        else:
+            cfg[c] = st.column_config.TextColumn(c, help=h)
+    return cfg
+
+
+def topn_bar(df: pd.DataFrame, col: str, n: int, top: bool, title: str):
+    """Bar horizontal Top/Bottom-N untuk satu metrik (skalabel ke banyak engineer)."""
+    d = df[["Engineer", col]].dropna().sort_values(col, ascending=not top).head(n)
+    fig = px.bar(d, x=col, y="Engineer", orientation="h", title=title, text=col)
+    fig.update_layout(
+        yaxis={"categoryorder": "total ascending" if top else "total descending"},
+        height=max(280, 26 * len(d) + 80), margin=dict(t=40, b=10),
+    )
+    return fig
+
 
 @st.cache_data(show_spinner="Menarik data dari ClickUp/GitLab ...")
 def gather_cached(
@@ -90,6 +136,20 @@ def bottleneck_frame(data: ReportData) -> pd.DataFrame:
         "Rata-rata (jam)": b.avg_hours,
         "Jumlah task": b.count,
     } for b in data.status_flow])
+
+
+def util_frame(data: ReportData) -> pd.DataFrame:
+    rows = [{
+        "Engineer": e.name,
+        "Skor": e.utilization_score,
+        "WIP": e.open_tasks,
+        "Hari aktif": e.active_days,
+        "Selesai": e.completed,
+        "Story point": e.story_points,
+        "Sinyal rendah": ", ".join(e.low_signals) or "—",
+    } for e in data.engineers]
+    df = pd.DataFrame(rows)
+    return df.sort_values("Skor", na_position="last").reset_index(drop=True)
 
 
 # ---------------------------------------------------------------- sidebar
@@ -160,87 +220,108 @@ if data.max_age_days is not None and data.filtered_stale:
     st.caption(f"🧹 {data.filtered_stale} task basi (lead time > {data.max_age_days} hari) diabaikan.")
 
 summary = summary_frame(data)
+emap = {e.name: e for e in data.engineers}
 
-# Chart baris 1: throughput & commit
-col_a, col_b = st.columns(2)
-with col_a:
-    st.subheader("Task selesai per engineer")
-    st.bar_chart(summary.set_index("Engineer")["Selesai"])
-with col_b:
-    st.subheader("Hari aktif commit per engineer" if data.has_commit_data else "Commit (tidak ada data)")
-    if data.has_commit_data:
-        st.bar_chart(summary.set_index("Engineer")["Hari aktif"])
-    else:
-        st.info("Aktivitas commit tidak diambil (sumber = none / gagal).")
 
-# Matriks task vs commit
-if data.has_commit_data:
-    st.subheader("Matriks Task vs Commit")
-    scatter = summary[["Engineer", "Selesai", "Hari aktif"]].copy()
-    t_med = scatter["Selesai"].median()
-    a_med = scatter["Hari aktif"].median()
-    fig = px.scatter(
-        scatter, x="Selesai", y="Hari aktif", text="Engineer",
-        labels={"Selesai": "Task selesai (ClickUp)", "Hari aktif": "Hari aktif commit (GitLab)"},
-    )
-    fig.update_traces(textposition="top center", marker=dict(size=12))
-    fig.add_vline(x=t_med, line_dash="dash", line_color="gray")
-    fig.add_hline(y=a_med, line_dash="dash", line_color="gray")
-    fig.update_layout(height=480, margin=dict(t=30))
-    st.plotly_chart(fig, width="stretch")
-    st.caption(
-        f"Garis = median (task {t_med:g}, hari aktif {a_med:g}). Kanan-bawah = banyak task tapi sedikit "
-        "commit; kiri-atas = aktif ngoding tapi jarang update task. Pola, bukan ranking."
-    )
+def _slider(label, total, key, default=15):
+    hi = max(1, total)
+    return st.slider(label, 1, hi, min(default, hi), key=key) if hi > 1 else hi
 
-# Throughput per minggu
-if data.weeks:
-    st.subheader("Throughput per minggu")
-    st.bar_chart(weekly_frame(data).T)  # index=minggu, kolom=engineer (stacked)
 
-# Engineer underutilized
+# ===================================================================== 1) UTILIZATION (paling atas)
+st.header("🎯 Engineer Utilization")
 if data.has_utilization:
-    st.subheader("Engineer Underutilized")
+    uf = util_frame(data)
     st.caption(
         f"Skor 0–100 relatif tim (sinyal: {', '.join(data.utilization_signals) or '—'}). "
-        "Makin rendah = makin underutilized. Bukan vonis kinerja — pemicu obrolan kapasitas."
+        "Makin rendah = makin underutilized. **Bukan vonis kinerja** — pemicu obrolan kapasitas."
     )
-    uframe = pd.DataFrame([{
-        "Engineer": e.name,
-        "Skor": e.utilization_score,
-        "WIP": e.open_tasks,
-        "Hari aktif": e.active_days,
-        "Selesai": e.completed,
-        "Story point": e.story_points,
-        "Sinyal rendah": ", ".join(e.low_signals) or "—",
-    } for e in sorted(
-        data.engineers,
-        key=lambda e: e.utilization_score if e.utilization_score is not None else 999,
-    )])
-    st.bar_chart(uframe.set_index("Engineer")["Skor"])
-    st.dataframe(uframe, width="stretch", hide_index=True)
+    flagged = uf[uf["Skor"].notna() & (uf["Skor"] <= 33.3)]
+    if len(flagged):
+        st.warning("⚠️ **Perlu perhatian** (sepertiga terbawah): "
+                   + ", ".join(f"{r.Engineer} ({r.Skor:.0f})" for r in flagged.itertuples()))
+    else:
+        st.success("Tidak ada engineer di sepertiga terbawah.")
+    uc1, uc2 = st.columns([3, 2])
+    with uc1:
+        n = _slider("Tampilkan N skor terendah", len(uf), "util_n")
+        st.plotly_chart(topn_bar(uf, "Skor", n, top=False, title=f"{n} skor terendah"), width="stretch")
+    with uc2:
+        st.plotly_chart(px.histogram(uf, x="Skor", nbins=10, title="Distribusi skor"), width="stretch")
+    st.dataframe(uf, column_config=cols(uf), width="stretch", hide_index=True)
+else:
+    st.info("Nyalakan **Analisis utilisasi** di sidebar untuk skor utilisasi & daftar engineer underutilized.")
 
-# Bottleneck
+# ===================================================================== 2) RINGKASAN & METRIK (tabel-sentris)
+st.header("📋 Ringkasan & Metrik")
+metric_opts = [c for c in summary.columns if c in _NUMERIC]
+if metric_opts:
+    m1, m2, m3 = st.columns([2, 1, 2])
+    metric = m1.selectbox("Metrik", metric_opts,
+                          index=metric_opts.index("Selesai") if "Selesai" in metric_opts else 0)
+    top = m2.radio("Urutan", ["Top", "Bottom"], horizontal=True) == "Top"
+    n2 = m3.slider("N", 1, max(1, len(summary)), min(15, len(summary)), key="sum_n") if len(summary) > 1 else 1
+    st.plotly_chart(topn_bar(summary, metric, n2, top, f"{'Top' if top else 'Bottom'} {n2} — {metric}"), width="stretch")
+st.dataframe(summary, column_config=cols(summary), width="stretch", hide_index=True)
+
+# ===================================================================== 3) MATRIKS TASK vs COMMIT
+if data.has_commit_data:
+    st.header("🔭 Matriks Task vs Commit")
+    sc = pd.DataFrame([{"Engineer": e.name, "Selesai": e.completed, "Hari aktif": e.active_days,
+                        "Skor": e.utilization_score} for e in data.engineers])
+    t_med, a_med = sc["Selesai"].median(), sc["Hari aktif"].median()
+    color = "Skor" if (data.has_utilization and sc["Skor"].notna().any()) else "Selesai"
+    fig = px.scatter(sc, x="Selesai", y="Hari aktif", hover_name="Engineer", color=color,
+                     color_continuous_scale="RdYlGn",
+                     labels={"Selesai": "Task selesai (ClickUp)", "Hari aktif": "Hari aktif commit (GitLab)"})
+    fig.add_vline(x=t_med, line_dash="dash", line_color="gray")
+    fig.add_hline(y=a_med, line_dash="dash", line_color="gray")
+    fig.update_traces(marker=dict(size=11))
+    fig.update_layout(height=480, margin=dict(t=30))
+    st.plotly_chart(fig, width="stretch")
+    st.caption(f"Hover untuk nama. Garis = median (task {t_med:g}, hari aktif {a_med:g}). "
+               "Kanan-bawah = banyak task sedikit commit; kiri-atas = aktif ngoding jarang update task.")
+
+# ===================================================================== 4) THROUGHPUT MINGGUAN (total tim)
+if data.weeks:
+    st.header("📈 Throughput per minggu (total tim)")
+    st.bar_chart(weekly_frame(data).sum(axis=0))
+    st.caption("Total task selesai tim per minggu. Rincian per engineer ada di drill-down di bawah.")
+
+# ===================================================================== 5) BOTTLENECK
 if data.deep and data.status_flow:
-    st.subheader("Bottleneck (median jam per status, status terminal dikecualikan)")
+    st.header("🧱 Bottleneck (median jam per status)")
     bf = bottleneck_frame(data)
-    st.bar_chart(bf.set_index("Status")["Median (jam)"])
+    st.plotly_chart(px.bar(bf.sort_values("Median (jam)"), x="Median (jam)", y="Status",
+                           orientation="h", height=max(280, 26 * len(bf) + 80)), width="stretch")
     st.dataframe(bf, width="stretch", hide_index=True)
 
-# Tabel ringkasan
-st.subheader("Ringkasan per engineer")
-st.dataframe(summary, width="stretch", hide_index=True)
-
-# Commit detail
+# ===================================================================== 6) DRILL-DOWN per engineer
+st.header("🔎 Detail per engineer")
+who = st.selectbox("Pilih engineer", [e.name for e in data.engineers])
+e = emap[who]
+d1, d2, d3, d4 = st.columns(4)
+d1.metric("Task selesai", e.completed)
+d2.metric("Commits", e.commits if data.has_commit_data else "—")
+d3.metric("Hari aktif", e.active_days if data.has_commit_data else "—")
+d4.metric("WIP", e.open_tasks if data.has_utilization else "—")
+extra = []
+if data.has_utilization and e.utilization_score is not None:
+    s = f"Skor utilisasi **{e.utilization_score:.0f}**"
+    if e.low_signals:
+        s += f" · sinyal rendah: {', '.join(e.low_signals)}"
+    extra.append(s)
+if data.has_last_done:
+    extra.append(f"Selesai terakhir: **{e.last_done_date or '—'}**")
+if e.cycle_times_days:
+    extra.append(f"Cycle median: **{e.cycle_median}** hari")
 if data.has_commit_data:
-    with st.expander("Detail commit (+/- baris)"):
-        cdf = pd.DataFrame([{
-            "Engineer": e.name, "Commits": e.commits, "Hari aktif": e.active_days,
-            "Repo": e.repos_touched, "+Baris": e.commit_additions, "-Baris": e.commit_deletions,
-        } for e in sorted(data.engineers, key=lambda x: x.commits, reverse=True)])
-        note = "sudah disaring noise" if data.commit_noise_filtered else "mentah (aktifkan filter noise di sidebar)"
-        st.caption(f"+/- baris: {note}.")
-        st.dataframe(cdf, width="stretch", hide_index=True)
+    note = "tanpa noise" if data.commit_noise_filtered else "mentah"
+    extra.append(f"±baris ({note}): +{e.commit_additions}/-{e.commit_deletions} · {e.repos_touched} repo")
+if extra:
+    st.markdown(" · ".join(extra))
+if data.weeks:
+    st.bar_chart(pd.Series({w: e.per_week.get(w, 0) for w in data.weeks}))
 
 # Download Markdown
 now = datetime.now(timezone(timedelta(hours=float(tz))))

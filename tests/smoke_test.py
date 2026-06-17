@@ -296,7 +296,7 @@ assert (um["A"].utilization_score, um["B"].utilization_score, um["C"].utilizatio
 assert um["A"].story_points == 29 and um["A"].open_tasks == 10, (um["A"].story_points, um["A"].open_tasks)
 assert set(um["C"].low_signals) == {"WIP", "hari aktif", "throughput", "story point"}
 assert um["A"].low_signals == []
-assert "Engineer Underutilized" in render_markdown(util, generated_at="2024-05-31 09:00 WIB")
+assert "Engineer Utilization" in render_markdown(util, generated_at="2024-05-31 09:00 WIB")
 
 # Sinyal SP kosong -> "story point" di-skip
 util2 = build_report_data(
