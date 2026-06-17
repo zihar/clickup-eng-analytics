@@ -45,9 +45,15 @@ team_id: ""               # optional; leave empty to use the first workspace
 engineers:
   - name: "Budi"
     email: "budi@example.com"
+    chapter: "Backend Golang"   # optional: discipline/chapter for filtering
   - name: "Sari"
     id: 12345678
+    chapter: "Frontend Dev"
 ```
+
+Set `chapter` per engineer (e.g. `Backend Golang`, `Backend .Net`, `Frontend Dev`, `Mobile Dev`) to
+filter by chapter in the dashboard (sidebar **Chapter**) or CLI (`--chapter "Backend Golang"`, repeatable).
+When filtered to a chapter, the utilization score is computed **relative to that chapter** (fair like-for-like).
 
 ### (Optional) GitLab commit activity
 
@@ -115,7 +121,7 @@ export CLICKUP_TOKEN=pk_...        # and GITLAB_TOKEN=glpat-... if using the Git
 streamlit run dashboard.py
 ```
 
-Features: filter by period & engineer, toggle `deep`/stale-task filter/noise filter,
+Features: filter by chapter & period & engineer, toggle `deep`/stale-task filter/noise filter,
 concise KPIs, throughput & active-days charts, an interactive **Task vs Commit matrix** (Plotly),
 bottleneck table, and a button to download the Markdown report. The **Refresh data** button clears the cache.
 The dashboard uses the same pipeline as the CLI (`engineering_productivity.pipeline.gather_report`).

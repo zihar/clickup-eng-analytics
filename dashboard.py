@@ -35,6 +35,7 @@ st.set_page_config(page_title="Engineering Productivity", page_icon="📊", layo
 # Sumber data tiap kolom — dipakai sebagai tooltip "?" di header tabel.
 COLUMN_HELP = {
     "Engineer": "Nama dari daftar engineer (member ClickUp).",
+    "Chapter": "Chapter/disiplin engineer (dari config).",
     "Selesai": "ClickUp — task berstatus done dengan tanggal selesai dalam periode.",
     "Selesai terakhir": "ClickUp — tanggal task terakhir berstatus done (lintas periode, mode --last-done).",
     "Lead median (hari)": "ClickUp — median (tanggal selesai − tanggal dibuat).",
@@ -66,6 +67,13 @@ def cols(df: pd.DataFrame) -> dict:
         else:
             cfg[c] = st.column_config.TextColumn(c, help=h)
     return cfg
+
+
+def add_chapter(df: pd.DataFrame) -> pd.DataFrame:
+    """Sisipkan kolom Chapter (dari config) setelah kolom Engineer."""
+    if "Engineer" in df.columns and "Chapter" not in df.columns:
+        df.insert(1, "Chapter", df["Engineer"].map(NAME_TO_CHAPTER))
+    return df
 
 
 def topn_bar(df: pd.DataFrame, col: str, n: int, top: bool, title: str):
@@ -154,8 +162,12 @@ except ConfigError as exc:
     st.stop()
 
 st.sidebar.title("⚙️ Filter")
-all_names = [e.name for e in base_config.engineers]
-sel_names = st.sidebar.multiselect("Engineer", all_names, default=all_names)
+NAME_TO_CHAPTER = {e.name: (e.chapter or "(tanpa chapter)") for e in base_config.engineers}
+all_chapters = sorted(set(NAME_TO_CHAPTER.values()))
+sel_chapters = st.sidebar.multiselect("Chapter", all_chapters, default=all_chapters,
+                                      help="Skor utilisasi dihitung relatif terhadap engineer yang ter-filter (per chapter).")
+_in_chapter = [n for n, ch in NAME_TO_CHAPTER.items() if ch in sel_chapters]
+sel_names = st.sidebar.multiselect("Engineer", _in_chapter, default=_in_chapter)
 
 today = date.today()
 default_start = today - timedelta(days=30)
@@ -215,7 +227,7 @@ if data.has_commit_data:
 if data.max_age_days is not None and data.filtered_stale:
     st.caption(f"🧹 {data.filtered_stale} task basi (lead time > {data.max_age_days} hari) diabaikan.")
 
-summary = summary_frame(data)
+summary = add_chapter(summary_frame(data))
 emap = {e.name: e for e in data.engineers}
 
 
@@ -227,7 +239,7 @@ def _slider(label, total, key, default=15):
 # ===================================================================== 1) UTILIZATION (paling atas)
 st.header("🎯 Engineer Utilization")
 if data.has_utilization:
-    uf = util_frame(data)
+    uf = add_chapter(util_frame(data))
     st.caption(
         f"Skor 0–100 relatif tim (sinyal: {', '.join(data.utilization_signals) or '—'}). "
         "Makin rendah = makin underutilized. **Bukan vonis kinerja** — pemicu obrolan kapasitas."

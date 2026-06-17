@@ -16,6 +16,7 @@ class Engineer:
     name: str
     email: str | None = None
     id: int | None = None
+    chapter: str | None = None  # mis. "Backend Golang", "Backend .Net", "Frontend Dev", "Mobile Dev"
 
 
 @dataclass
@@ -81,7 +82,7 @@ def load_config(path: str | Path) -> Config:
         if not isinstance(item, dict):
             raise ConfigError(f"Entri engineer tidak valid: {item!r}")
         name = item.get("name") or item.get("email") or str(item.get("id"))
-        eng = Engineer(name=name, email=item.get("email"), id=item.get("id"))
+        eng = Engineer(name=name, email=item.get("email"), id=item.get("id"), chapter=item.get("chapter"))
         if not eng.email and not eng.id:
             raise ConfigError(f"Engineer '{name}' harus punya 'email' atau 'id'.")
         engineers.append(eng)

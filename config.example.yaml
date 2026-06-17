@@ -40,8 +40,12 @@ task_backfill_since: "2026-05-01"
 
 # Daftar engineer yang mau dianalisis. Boleh pakai email ATAU id numerik.
 # Email akan di-resolve otomatis ke id lewat daftar member workspace.
+# `chapter` (opsional) untuk filter per disiplin di dashboard/CLI:
+#   mis. "Backend Golang", "Backend .Net", "Frontend Dev", "Mobile Dev".
 engineers:
   - name: "Contoh Engineer A"
     email: "engineer.a@example.com"
+    chapter: "Backend Golang"
   - name: "Contoh Engineer B"
     id: 12345678
+    chapter: "Frontend Dev"
