@@ -40,7 +40,6 @@ COLUMN_HELP = {
     "Selesai terakhir": "ClickUp — tanggal task terakhir berstatus done (lintas periode, mode --last-done).",
     "Lead median (hari)": "ClickUp — median (tanggal selesai − tanggal dibuat).",
     "Cycle median (hari)": "ClickUp time_in_status (mode Deep) — median waktu di status aktif.",
-    "Tracked (jam)": "ClickUp time entries (time tracking) — butuh izin workspace.",
     "Commits": "GitLab — jumlah commit (dicocokkan via email penulis).",
     "Hari aktif": "GitLab — jumlah hari yang ada commit.",
     "Repo": "GitLab — jumlah repo yang disentuh.",
@@ -51,7 +50,7 @@ COLUMN_HELP = {
     "Skor": "Dihitung — rata-rata percentile lintas sinyal (0–100; makin rendah = makin underutilized).",
     "Sinyal rendah": "Sinyal di mana engineer ada di sepertiga terbawah tim.",
 }
-_NUMERIC = {"Selesai", "Lead median (hari)", "Cycle median (hari)", "Tracked (jam)", "Commits",
+_NUMERIC = {"Selesai", "Lead median (hari)", "Cycle median (hari)", "Commits",
             "Hari aktif", "Repo", "+Baris", "-Baris", "WIP", "Story point"}
 
 
@@ -117,7 +116,6 @@ def summary_frame(data: ReportData) -> pd.DataFrame:
         **({"Selesai terakhir": e.last_done_date or "—"} if data.has_last_done else {}),
         "Lead median (hari)": e.lead_median,
         "Cycle median (hari)": e.cycle_median if e.cycle_times_days else None,
-        "Tracked (jam)": e.tracked_hours,
         "Commits": e.commits,
         "Hari aktif": e.active_days,
         "Repo": e.repos_touched,

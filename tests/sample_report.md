@@ -10,10 +10,10 @@
 
 ## Ringkasan per Engineer
 
-| Engineer | Selesai | Lead time median (hari) | Cycle time median (hari) | Tracked (jam) | Estimasi (jam) | Akurasi estimasi |
-|---|--:|--:|--:|--:|--:|--:|
-| Sari | 2 | 3.0 | 2.5 | 6.0 | 4.0 | 1.5× |
-| Budi | 2 | 1.5 | 1.75 | 10.0 | 12.0 | 0.83× |
+| Engineer | Selesai | Lead time median (hari) | Cycle time median (hari) |
+|---|--:|--:|--:|
+| Sari | 2 | 3.0 | 2.5 |
+| Budi | 2 | 1.5 | 1.75 |
 
 ## Throughput per Minggu (jumlah task selesai)
 
@@ -61,16 +61,12 @@ Lama task berada di tiap status (semua task pada periode), diurutkan dari **medi
 - Task selesai: **2**
 - Lead time: median 3.0 hari · rata-rata 3.0 hari
 - Cycle time (waktu aktif dikerjakan): median 2.5 hari
-- Time tracked: 6.0 jam (estimasi 4.0 jam)
 - Commit GitLab: 0 commit · 0 hari aktif · 0 repo
-- Akurasi estimasi: 1.5× (lebih lama dari estimasi)
 
 ### Budi
 
 - Task selesai: **2**
 - Lead time: median 1.5 hari · rata-rata 1.5 hari
 - Cycle time (waktu aktif dikerjakan): median 1.75 hari
-- Time tracked: 10.0 jam (estimasi 12.0 jam)
 - Commit GitLab: 20 commit · 5 hari aktif · 2 repo
-- Akurasi estimasi: 0.83× (lebih cepat dari estimasi)
 

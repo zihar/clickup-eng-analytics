@@ -131,24 +131,3 @@ class ClickUpClient:
         """Riwayat waktu per status untuk satu task (dipakai untuk cycle time & bottleneck)."""
         return self._get(f"/task/{task_id}/time_in_status")
 
-    # ---------------------------------------------------------- Time entries
-    def iter_time_entries(
-        self,
-        team_id: str,
-        *,
-        start_date: int,
-        end_date: int,
-        assignee_ids: list[int],
-    ) -> Iterator[dict]:
-        """Iterasi entri time-tracking dalam rentang waktu, per engineer.
-
-        Lebih akurat untuk 'time tracked per orang' dibanding field time_spent task,
-        karena time_spent task adalah total seluruh assignee.
-        """
-        params: dict[str, Any] = {"start_date": start_date, "end_date": end_date}
-        # API menerima assignee sebagai daftar dipisah koma.
-        if assignee_ids:
-            params["assignee"] = ",".join(str(i) for i in assignee_ids)
-        data = self._get(f"/team/{team_id}/time_entries", params=params)
-        for entry in data.get("data", []):
-            yield entry

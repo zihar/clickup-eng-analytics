@@ -199,20 +199,6 @@ def gather_report(
 
     time_in_status = _fetch_time_in_status(client, tasks, store, progress) if opts.deep else None
 
-    progress("[*] Menarik time entries ...")
-    try:
-        time_entries = list(
-            client.iter_time_entries(
-                team_id,
-                start_date=date_done_gt,
-                end_date=date_done_lt,
-                assignee_ids=sorted(target_ids),
-            )
-        )
-    except ClickUpError as exc:
-        progress(f"    [!] Time entries dilewati (metrik 'time tracked' kosong): {exc}")
-        time_entries = []
-
     commit_stats = None
     commit_source = None
     source = "none" if opts.no_commits else resolve_commit_source(config)
@@ -319,7 +305,6 @@ def gather_report(
         id_to_name=id_to_name,
         target_ids=target_ids,
         time_in_status=time_in_status,
-        time_entries=time_entries,
         since=since_str,
         until=until_str,
         tz_offset=opts.tz,
