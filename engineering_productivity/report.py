@@ -60,17 +60,14 @@ def _summary_table(lines: list[str], engineers: list[EngineerStats], has_last_do
     last_col = " Selesai terakhir |" if has_last_done else ""
     last_sep = "--:|" if has_last_done else ""
     lines.append(
-        "| Engineer | Selesai |" + last_col + " Lead time median (hari) | Cycle time median (hari) "
-        "| Tracked (jam) | Estimasi (jam) | Akurasi estimasi |"
+        "| Engineer | Selesai |" + last_col + " Lead time median (hari) | Cycle time median (hari) |"
     )
-    lines.append("|---|--:|" + last_sep + "--:|--:|--:|--:|--:|")
+    lines.append("|---|--:|" + last_sep + "--:|--:|")
     for e in engineers:
         last_cell = f" {e.last_done_date or '—'} |" if has_last_done else ""
         lines.append(
             f"| {e.name} | {e.completed} |" + last_cell + f" {_fmt(e.lead_median)} | "
-            f"{_fmt(e.cycle_median) if e.cycle_times_days else '—'} | "
-            f"{_fmt(e.tracked_hours)} | {_fmt(e.estimate_hours)} | "
-            f"{_fmt(e.estimate_accuracy, '×')} |"
+            f"{_fmt(e.cycle_median) if e.cycle_times_days else '—'} |"
         )
     lines.append("")
 
@@ -218,13 +215,9 @@ def _per_engineer_detail(lines: list[str], engineers: list[EngineerStats], has_c
         lines.append(f"- Lead time: median {_fmt(e.lead_median)} hari · rata-rata {_fmt(e.lead_mean)} hari")
         if e.cycle_times_days:
             lines.append(f"- Cycle time (waktu aktif dikerjakan): median {_fmt(e.cycle_median)} hari")
-        lines.append(f"- Time tracked: {_fmt(e.tracked_hours)} jam (estimasi {_fmt(e.estimate_hours)} jam)")
         if has_commit:
             lines.append(
                 f"- Commit GitLab: {e.commits} commit · {e.active_days} hari aktif · "
                 f"{e.repos_touched} repo"
             )
-        if e.estimate_accuracy is not None:
-            arah = "lebih lama dari" if e.estimate_accuracy > 1 else "lebih cepat dari"
-            lines.append(f"- Akurasi estimasi: {e.estimate_accuracy}× ({arah} estimasi)")
         lines.append("")

@@ -102,14 +102,6 @@ time_in_status = {
     },
 }
 
-# Time tracked dikreditkan ke Developer task (entry["task"]["id"]), bukan pencatat.
-time_entries = [
-    {"user": {"id": ID_SARI}, "task": {"id": "t1"}, "duration": str(10 * 3_600_000)},  # t1 dev=Budi -> Budi 10j
-    {"user": {"id": ID_BUDI}, "task": {"id": "t3"}, "duration": str(6 * 3_600_000)},   # t3 dev=Sari -> Sari 6j
-    {"user": {"id": ID_SARI}, "task": {"id": "t3"}, "duration": "-5000"},  # negatif -> diabaikan
-    {"user": {"id": ID_BUDI}, "task": {"id": "t999"}, "duration": str(3_600_000)},  # task di luar set -> di-skip
-]
-
 commit_stats = {
     ID_BUDI: CommitStats(commits=20, additions=100, deletions=10, active_days=5, repos=2),
     999: CommitStats(commits=99),  # bukan target -> diabaikan
@@ -121,7 +113,6 @@ data = build_report_data(
     id_to_name=id_to_name,
     target_ids={ID_BUDI, ID_SARI},
     time_in_status=time_in_status,
-    time_entries=time_entries,
     since="2024-05-01",
     until="2024-05-31",
     tz_offset=7,
@@ -133,8 +124,6 @@ by_name = {e.name: e for e in data.engineers}
 assert data.total_tasks == 4, f"total_tasks salah: {data.total_tasks}"  # t1,t2(budi) + t2,t3(sari)
 assert by_name["Budi"].completed == 2, by_name["Budi"].completed
 assert by_name["Sari"].completed == 2, by_name["Sari"].completed
-assert by_name["Budi"].tracked_hours == 10.0, by_name["Budi"].tracked_hours
-assert by_name["Sari"].tracked_hours == 6.0, by_name["Sari"].tracked_hours
 # Budi lead times: t1=2hari, t2=1hari -> median 1.5
 assert by_name["Budi"].lead_median == 1.5, by_name["Budi"].lead_median
 # Cycle time Budi t1 = 2+0.5 = 2.5 hari (status 'custom' saja), t2 = 1 hari -> median 1.75
@@ -146,8 +135,6 @@ assert top.median_hours > 0 and top.p90_hours >= top.median_hours, (top.median_h
 # Status terminal (Done/Closed) harus dikecualikan walau durasinya besar.
 flow_names = {b.status for b in data.status_flow}
 assert "Done" not in flow_names, flow_names
-# Estimasi akurasi Budi: tracked 10j / estimate 12j = 0.83
-assert by_name["Budi"].estimate_accuracy == 0.83, by_name["Budi"].estimate_accuracy
 # Commit GitLab dari DB: Budi 20 commit / 5 hari aktif / 2 repo; Sari 0.
 assert data.has_commit_data is True
 assert by_name["Budi"].commits == 20 and by_name["Budi"].active_days == 5, by_name["Budi"].commits
@@ -238,7 +225,6 @@ data_capped = build_report_data(
     id_to_name=id_to_name,
     target_ids={ID_BUDI, ID_SARI},
     time_in_status=time_in_status,
-    time_entries=time_entries,
     since="2024-05-01",
     until="2024-05-31",
     tz_offset=7,
@@ -270,7 +256,6 @@ data_ld = build_report_data(
     id_to_name=id_to_name,
     target_ids={ID_BUDI, ID_SARI},
     time_in_status=None,
-    time_entries=[],
     since="2024-05-01",
     until="2024-05-31",
     tz_offset=7,
@@ -296,7 +281,7 @@ util_tasks = [_ct(1, 3, 0), _ct(1, 3, 1), _ct(1, 3, 2), _ct(2, 2, 0), _ct(2, 2, 
 util_commits = {1: CommitStats(commits=50, active_days=15), 2: CommitStats(commits=20, active_days=8), 3: CommitStats(commits=2, active_days=2)}
 util = build_report_data(
     util_tasks, developer_field_id=DEV_FIELD, id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
-    time_in_status=None, time_entries=[], since="2024-05-01", until="2024-05-31", tz_offset=7,
+    time_in_status=None, since="2024-05-01", until="2024-05-31", tz_offset=7,
     commit_stats=util_commits, open_tasks={1: 10, 2: 5, 3: 1},
     open_story_points={1: 20.0, 2: 10.0, 3: 2.0}, utilization=True,
 )
@@ -312,7 +297,7 @@ assert "Engineer Utilization" in render_markdown(util, generated_at="2024-05-31 
 # Sinyal SP kosong -> "story point" di-skip
 util2 = build_report_data(
     [_ct(1, 0, 0), _ct(2, 0, 0)], developer_field_id=DEV_FIELD, id_to_name={1: "A", 2: "B", 3: "C"}, target_ids={1, 2, 3},
-    time_in_status=None, time_entries=[], since="2024-05-01", until="2024-05-31", tz_offset=7,
+    time_in_status=None, since="2024-05-01", until="2024-05-31", tz_offset=7,
     commit_stats=util_commits, open_tasks={1: 10, 2: 5, 3: 1}, utilization=True,
 )
 assert "story point" not in util2.utilization_signals, util2.utilization_signals

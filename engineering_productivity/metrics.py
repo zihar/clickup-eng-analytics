@@ -86,8 +86,6 @@ class EngineerStats:
     completed: int = 0
     lead_times_days: list[float] = field(default_factory=list)
     cycle_times_days: list[float] = field(default_factory=list)
-    estimate_ms: int = 0
-    tracked_ms: int = 0
     per_week: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     # Aktivitas commit GitLab (join via id ClickUp).
     commits: int = 0
@@ -122,21 +120,6 @@ class EngineerStats:
     @property
     def cycle_median(self) -> float:
         return _median(self.cycle_times_days)
-
-    @property
-    def tracked_hours(self) -> float:
-        return round(self.tracked_ms / MS_PER_HOUR, 1)
-
-    @property
-    def estimate_hours(self) -> float:
-        return round(self.estimate_ms / MS_PER_HOUR, 1)
-
-    @property
-    def estimate_accuracy(self) -> float | None:
-        """Rasio tracked/estimate. >1 berarti lebih lama dari estimasi."""
-        if self.estimate_ms <= 0:
-            return None
-        return round(self.tracked_ms / self.estimate_ms, 2)
 
 
 @dataclass
@@ -190,7 +173,6 @@ def build_report_data(
     id_to_name: dict[int, str],
     target_ids: set[int],
     time_in_status: dict[str, dict] | None,
-    time_entries: list[dict],
     since: str,
     until: str,
     tz_offset: float,
@@ -249,39 +231,17 @@ def build_report_data(
             cycle_days = _cycle_time_days(task, time_in_status)
             _accumulate_status_flow(task, time_in_status, status_flow)
 
-        estimate = to_int_ms(task.get("time_estimate")) or 0
         points = _task_points(task)
 
         for d in relevant:
             s = stats[d]
             s.completed += 1
             s.per_week[week] += 1
-            s.estimate_ms += estimate
             s.story_points += points
             if lead_days is not None:
                 s.lead_times_days.append(lead_days)
             if cycle_days is not None:
                 s.cycle_times_days.append(cycle_days)
-
-    # Time tracked dikreditkan ke Developer pada task time entry (bukan si pencatat).
-    # Map task_id -> {developer id yang jadi target} dari task yang ter-fetch.
-    task_dev = {
-        t["id"]: set(task_developer_ids(t, developer_field_id)) & target_ids
-        for t in tasks
-    }
-    tracked_skipped = 0
-    for entry in time_entries:
-        dur = to_int_ms(entry.get("duration")) or 0
-        if dur <= 0:  # abaikan timer berjalan / nilai negatif
-            continue
-        task = entry.get("task") or {}
-        tid = task.get("id")
-        devs = task_dev.get(tid)
-        if not devs:  # task di luar set yang ditarik / Developer bukan target
-            tracked_skipped += 1
-            continue
-        for d in devs:
-            stats[d].tracked_ms += dur
 
     # Gabungkan aktivitas commit GitLab (join via id ClickUp).
     if commit_stats:
