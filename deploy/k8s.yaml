@@ -1,0 +1,158 @@
+# =============================================================================
+# Manifest Kubernetes: dashboard (Deployment) + refresh nightly (CronJob) + Postgres.
+#
+# Rahasia (token & DSN) lewat Secret/env; config non-rahasia lewat ConfigMap.
+# Ganti nilai ber-tanda CHANGE_ME sebelum apply.
+#
+#   kubectl apply -f deploy/k8s.yaml
+#
+# Postgres di sini StatefulSet sederhana; untuk produksi pertimbangkan DB terkelola
+# (cukup ganti EP_STORE_DSN di Secret, lalu hapus blok Postgres).
+# =============================================================================
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ep-secrets
+  namespace: engineering-productivity
+type: Opaque
+stringData:
+  CLICKUP_TOKEN: "CHANGE_ME_pk_xxx"
+  GITLAB_TOKEN: "CHANGE_ME_glpat_xxx"
+  POSTGRES_PASSWORD: "CHANGE_ME_dbpass"
+  # Host = service Postgres di bawah; ganti bila pakai DB terkelola.
+  EP_STORE_DSN: "postgresql://ep:CHANGE_ME_dbpass@ep-postgres:5432/engineering_productivity"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ep-config
+  namespace: engineering-productivity
+data:
+  # config.yaml TANPA token (token/DSN dari env). Sinkronkan daftar engineer di sini.
+  config.yaml: |
+    team_id: "9018711461"
+    developer_field_name: "Developer"
+    task_backfill_since: "2026-05-01"
+    gitlab:
+      url: "https://git.bluebird.id"
+      projects: [692, 1071, 1137, 1156, 1179, 1191, 1212, 1373, 1417, 1534,
+                 1913, 2319, 2549, 3303, 3324, 3404, 3621]
+      aliases:
+        "dewabu1@gmail.com": "fauzan.akbar@bluebirdgroup.com"
+    engineers:
+      - { name: "Muhammad Fauzan Akbar", email: "fauzan.akbar@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Qinaatum Mubarokah",   email: "qinaatum.mubarokah@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Teza Maulana Ibrahim", email: "teza.maulana@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Nur Aini Afifah Isbindra", email: "nur.aini@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Yoopy Christian",      email: "yoopy.christian@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Dede Yuyandi",         email: "dede.yuyandi@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Dimas Priyo Nugroho",  email: "dimas.priyo@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Faizun Iqbal Zulfi",   email: "faizun.zulfi@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Ni Luh Irma Arini",    email: "irma.arini@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Dhuki Dwi Rachman",    email: "dhuki.rachman@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Ekky Kharismadhany",   email: "ekky.kharismadhany@bluebirdgroup.com", chapter: "Backend Golang" }
+      - { name: "Lukman Baidhowi",      email: "lukman.baidhowi@bluebirdgroup.com", chapter: "Backend Golang" }
+---
+# --------------------------------------------------------------------- Postgres
+apiVersion: v1
+kind: Service
+metadata:
+  name: ep-postgres
+  namespace: engineering-productivity
+spec:
+  selector: { app: ep-postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ep-postgres
+  namespace: engineering-productivity
+spec:
+  serviceName: ep-postgres
+  replicas: 1
+  selector: { matchLabels: { app: ep-postgres } }
+  template:
+    metadata: { labels: { app: ep-postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - { name: POSTGRES_USER, value: "ep" }
+            - { name: POSTGRES_DB, value: "engineering_productivity" }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: ep-secrets, key: POSTGRES_PASSWORD } }
+            - { name: PGDATA, value: "/var/lib/postgresql/data/pgdata" }
+          ports: [{ containerPort: 5432 }]
+          volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources: { requests: { storage: 5Gi } }
+---
+# --------------------------------------------------------------------- Dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ep-dashboard
+  namespace: engineering-productivity
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: ep-dashboard } }
+  template:
+    metadata: { labels: { app: ep-dashboard } }
+    spec:
+      containers:
+        - name: dashboard
+          image: CHANGE_ME_registry/engineering-productivity:latest
+          ports: [{ containerPort: 8501 }]
+          envFrom: [{ secretRef: { name: ep-secrets } }]
+          volumeMounts:
+            - { name: config, mountPath: /app/config.yaml, subPath: config.yaml }
+          readinessProbe:
+            httpGet: { path: /_stcore/health, port: 8501 }
+            initialDelaySeconds: 10
+      volumes:
+        - { name: config, configMap: { name: ep-config } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ep-dashboard
+  namespace: engineering-productivity
+spec:
+  selector: { app: ep-dashboard }
+  ports: [{ port: 80, targetPort: 8501 }]
+---
+# ----------------------------------------------------------------- Nightly refresh
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ep-nightly-refresh
+  namespace: engineering-productivity
+spec:
+  schedule: "0 0 * * *"          # tiap tengah malam
+  timeZone: "Asia/Jakarta"       # butuh Kubernetes >= 1.27
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: refresh
+              image: CHANGE_ME_registry/engineering-productivity:latest
+              # Gather LIVE semua engineer, window 60 hari → warm cache DB + meta.
+              command: ["python", "-m", "engineering_productivity",
+                        "--days", "60", "-o", "/tmp/nightly.md"]
+              envFrom: [{ secretRef: { name: ep-secrets } }]
+              volumeMounts:
+                - { name: config, mountPath: /app/config.yaml, subPath: config.yaml }
+          volumes:
+            - { name: config, configMap: { name: ep-config } }

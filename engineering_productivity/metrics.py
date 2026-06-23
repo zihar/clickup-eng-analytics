@@ -167,6 +167,8 @@ class ReportData:
     has_utilization: bool = False
     utilization_signals: list[str] = field(default_factory=list)
     repo_names: dict[str, str] = field(default_factory=dict)  # project_id -> path_with_namespace
+    offline: bool = False                # True bila data dari cache DB saja (tanpa fetch live)
+    cache_since: str | None = None       # tanggal terawal data ter-cache (untuk peringatan coverage)
 
 
 # --------------------------------------------------------------------- builder

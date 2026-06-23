@@ -47,6 +47,7 @@ class GatherOptions:
     last_done: bool = False          # hitung tanggal task terakhir selesai (lintas periode)
     last_done_lookback: int = 365    # batas mundur pencarian last-done (hari)
     utilization: bool = True         # fitur utama: selalu nyala
+    offline: bool = False            # baca dari cache DB saja (tanpa fetch live ClickUp/GitLab)
 
 
 def parse_date(text: str, tz_offset: float, *, end_of_day: bool = False) -> int:
@@ -138,6 +139,25 @@ def gather_report(
     progress: Progress = _noop,
 ) -> ReportData:
     """Jalankan seluruh pipeline dan kembalikan ReportData siap render."""
+    # Mode offline: baca semua dari cache DB, tanpa fetch live (dipakai dashboard
+    # sehari-hari; refresh DB dilakukan job nightly yang jalan dengan offline=False).
+    if opts.offline:
+        if store is None and config.store_dsn:
+            try:
+                store = Store.connect(config.store_dsn)
+                own_store_off = True
+            except StoreError as exc:
+                raise ClickUpError(f"Mode offline butuh cache DB, tapi gagal konek: {exc}") from exc
+        else:
+            own_store_off = False
+        if store is None:
+            raise ClickUpError("Mode offline butuh cache DB (set store.dsn / EP_STORE_DSN).")
+        try:
+            return _gather_offline(config, opts, store, progress)
+        finally:
+            if own_store_off:
+                store.close()
+
     client = client or ClickUpClient(config.token)
     team_id = client.resolve_team_id(config.team_id)
     if members is None:
@@ -159,6 +179,15 @@ def gather_report(
         except StoreError as exc:
             progress(f"    [!] Cache DB nonaktif (live): {exc}")
             store = None
+
+    # Simpan meta workspace ke cache supaya mode offline tak perlu panggil ClickUp.
+    if store is not None:
+        try:
+            store.set_meta("workspace", {"team_id": team_id, "members": members,
+                                         "dev_field_id": dev_field_id})
+            store.commit()
+        except StoreError as exc:
+            progress(f"    [!] gagal simpan meta workspace: {exc}")
 
     target_ids, id_to_name = resolve_targets(config, members, progress)
     if not target_ids:
@@ -331,9 +360,127 @@ def gather_report(
         utilization=opts.utilization,
         repo_names=repo_names,
     )
+    data.cache_since = config.task_backfill_since if store is not None else None
     if own_store and store is not None:
         store.commit()
         store.close()
+    return data
+
+
+def _gather_offline(config: Config, opts: GatherOptions, store: Store, progress: Progress) -> ReportData:
+    """Bangun ReportData murni dari cache DB — tanpa fetch live ClickUp/GitLab.
+
+    Meta workspace (members, dev_field_id) diambil dari cache; bila belum ada,
+    resolve sekali via ClickUp lalu simpan (one-off ringan).
+    """
+    progress("[*] Mode offline: baca dari cache DB (tanpa fetch live).")
+    meta = store.get_meta("workspace")
+    if not meta or not meta.get("members") or not meta.get("dev_field_id"):
+        progress("    [*] Meta workspace belum ter-cache; resolve sekali via ClickUp ...")
+        client = ClickUpClient(config.token)
+        team_id = client.resolve_team_id(config.team_id)
+        members = client.get_members(team_id)
+        dev_field_id = config.developer_field_id or _resolve_developer_field(
+            client, team_id, config.developer_field_name)
+        store.set_meta("workspace", {"team_id": team_id, "members": members,
+                                     "dev_field_id": dev_field_id})
+        store.commit()
+    else:
+        members = meta["members"]
+        dev_field_id = meta["dev_field_id"]
+
+    target_ids, id_to_name = resolve_targets(config, members, progress)
+    if not target_ids:
+        raise ClickUpError("Tidak ada engineer yang ter-resolve. Periksa daftar engineer di config.")
+
+    since_str, until_str = resolve_window(opts)
+    date_done_gt = parse_date(since_str, opts.tz)
+    date_done_lt = parse_date(until_str, opts.tz, end_of_day=True)
+
+    stored_tasks = store.get_tasks(sorted(target_ids))
+    progress(f"[*] {len(stored_tasks)} task dari cache (semua status).")
+    tasks = [
+        t for t in stored_tasks
+        if (dd := (to_int_ms(t.get("date_done")) or to_int_ms(t.get("date_closed")))) is not None
+        and date_done_gt <= dd <= date_done_lt
+    ]
+    progress(f"[*] {len(tasks)} task selesai ditemukan.")
+
+    time_in_status = store.get_time_in_status([t["id"] for t in tasks]) if opts.deep else None
+
+    # Commit: agregasi langsung dari cache (tanpa GitLab). Set repo = seed ∪ repo
+    # yang pernah ter-discover untuk engineer terpilih (last_seen >= since).
+    commit_stats = None
+    commit_source = None
+    repo_names: dict[str, str] = {}
+    if not opts.no_commits and config.gitlab:
+        emails = [e.email.lower() for e in config.engineers if e.email]
+        projects = {str(p) for p in config.gitlab.projects}
+        for repos in store.get_engineer_repos(emails).values():
+            for r in repos:
+                if (r.get("last_seen") or "") >= since_str:
+                    projects.add(str(r["project_id"]))
+        email_map = build_gitlab_email_map(config, members)
+        rows = store.get_commits(sorted(projects), since_str, until_str)
+        commit_stats = _aggregate_commit_rows(rows, email_map)
+        commit_source = "Cache DB (offline)"
+        resolved = store.get_projects(sorted(projects))
+        repo_names = {p: r["path"] for p, r in resolved.items() if r.get("path")}
+
+    last_done_ms: dict[int, int] | None = None
+    if opts.last_done:
+        lookback_lo = (
+            datetime.strptime(until_str, "%Y-%m-%d") - timedelta(days=opts.last_done_lookback)
+        ).strftime("%Y-%m-%d")
+        lookback_lo_ms = parse_date(lookback_lo, opts.tz)
+        last_done_ms = {}
+        for t in stored_tasks:
+            dd = to_int_ms(t.get("date_done")) or to_int_ms(t.get("date_closed"))
+            if dd is None or dd < lookback_lo_ms or dd > date_done_lt:
+                continue
+            for aid in task_developer_ids(t, dev_field_id):
+                if aid in target_ids and dd > last_done_ms.get(aid, 0):
+                    last_done_ms[aid] = dd
+
+    open_tasks_count: dict[int, int] | None = None
+    open_story_points: dict[int, float] | None = None
+    if opts.utilization:
+        open_tasks_count, open_story_points = {}, {}
+        for t in stored_tasks:
+            if ((t.get("status") or {}).get("type") or "").lower() in TERMINAL_STATUS_TYPES:
+                continue
+            raw = t.get("points")
+            try:
+                pts = float(raw) if raw not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                pts = 0.0
+            for aid in task_developer_ids(t, dev_field_id):
+                if aid in target_ids:
+                    open_tasks_count[aid] = open_tasks_count.get(aid, 0) + 1
+                    open_story_points[aid] = open_story_points.get(aid, 0.0) + pts
+
+    data = build_report_data(
+        tasks,
+        developer_field_id=dev_field_id,
+        id_to_name=id_to_name,
+        target_ids=target_ids,
+        time_in_status=time_in_status,
+        since=since_str,
+        until=until_str,
+        tz_offset=opts.tz,
+        max_age_days=opts.max_age,
+        commit_stats=commit_stats,
+        commit_source=commit_source,
+        commit_noise_filtered=False,
+        last_done_ms=last_done_ms,
+        last_done_lookback_days=opts.last_done_lookback if opts.last_done else None,
+        open_tasks=open_tasks_count,
+        open_story_points=open_story_points,
+        utilization=opts.utilization,
+        repo_names=repo_names,
+    )
+    data.offline = True
+    data.cache_since = config.task_backfill_since
     return data
 
 

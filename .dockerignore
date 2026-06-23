@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+reports/
+config.yaml
+.env
+PLAN-*.md
+tests/
+deploy/
+*.md
+!requirements.txt

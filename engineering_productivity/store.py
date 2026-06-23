@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS ep_projects (
     alive      BOOLEAN
 );
 ALTER TABLE ep_projects ADD COLUMN IF NOT EXISTS alive BOOLEAN;
+CREATE TABLE IF NOT EXISTS ep_meta (
+    key   TEXT PRIMARY KEY,
+    value JSONB NOT NULL
+);
 """
 
 
@@ -311,6 +315,21 @@ class Store:
                    ON CONFLICT (project_id) DO UPDATE
                    SET path = COALESCE(EXCLUDED.path, ep_projects.path), alive = EXCLUDED.alive""",
                 (str(project_id), path, alive),
+            )
+
+    # -------------------------------------------------------------- meta (workspace)
+    def get_meta(self, key: str) -> dict | None:
+        with self.conn.cursor() as cur:
+            cur.execute("SELECT value FROM ep_meta WHERE key = %s", (key,))
+            row = cur.fetchone()
+            return row[0] if row else None
+
+    def set_meta(self, key: str, value: dict) -> None:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO ep_meta (key, value) VALUES (%s, %s)
+                   ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value""",
+                (key, Json(value)),
             )
 
     # ------------------------------------------------------------------- misc

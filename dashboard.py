@@ -21,6 +21,7 @@ st.set_page_config(page_title="Engineering Productivity", page_icon="📊", layo
 from dashboard_lib import (
     add_chapter,
     cols,
+    coverage_note,
     load_base_config,
     load_data,
     render_sidebar,
@@ -93,6 +94,7 @@ st.subheader(
     f"📅 {tgl(data.since)} – {tgl(data.until)}  ·  "
     f"{(filters['until_d'] - filters['since_d']).days + 1} hari"
 )
+coverage_note(data, filters)
 
 # KPI — angka saja (3 kolom, tak ada yang terpotong)
 c1, c2, c3 = st.columns(3)

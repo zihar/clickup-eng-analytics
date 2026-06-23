@@ -20,7 +20,7 @@ st.set_page_config(page_title="Detail Engineer", page_icon="🔎", layout="wide"
 # Pastikan modul bersama & paket lokal bisa diimpor saat dijalankan sebagai page.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from dashboard_lib import load_base_config, load_data, render_sidebar, tgl  # noqa: E402
+from dashboard_lib import coverage_note, load_base_config, load_data, render_sidebar, tgl  # noqa: E402
 from engineering_productivity.metrics import _percentile  # noqa: E402
 
 st.title("🔎 Detail per Engineer")
@@ -50,6 +50,7 @@ chapter = filters["name_to_chapter"].get(who, "—")
 
 st.subheader(f"{who}  ·  {chapter}")
 st.caption(f"Periode {tgl(data.since)} – {tgl(data.until)}")
+coverage_note(data, filters)
 
 # -------------------------------------------------------------------- KPI ringkas
 k = st.columns(3)

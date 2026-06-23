@@ -88,7 +88,7 @@ def topn_bar(df: pd.DataFrame, col: str, n: int, top: bool, title: str):
     return fig
 
 
-@st.cache_data(show_spinner="Menarik data dari ClickUp/GitLab ...", persist="disk", max_entries=128)
+@st.cache_data(show_spinner="Menarik data ...", persist="disk", max_entries=128)
 def gather_cached(
     config_path: str,
     engineer_names: tuple[str, ...],
@@ -99,6 +99,7 @@ def gather_cached(
     no_discover: bool,
     exclude_noise: bool,
     last_done: bool,
+    offline: bool,
 ) -> ReportData:
     cfg = load_config(config_path)
     if engineer_names:
@@ -107,6 +108,7 @@ def gather_cached(
     opts = GatherOptions(
         since=since, until=until, deep=deep, max_age=max_age,
         no_discover=no_discover, exclude_noise=exclude_noise, last_done=last_done,
+        offline=offline,
     )  # tz=+7, utilisasi & commit GitLab selalu nyala (default)
     return gather_report(cfg, opts)
 
@@ -149,9 +151,17 @@ def render_sidebar(base_config) -> dict:
     else:
         since_d, until_d = today - timedelta(days=30), today
 
-    for k, v in {"flt_deep": False, "flt_no_discover": False,
-                 "flt_exclude_noise": False, "flt_last_done": False, "flt_max_age": 60}.items():
+    for k, v in {"flt_deep": False, "flt_no_discover": False, "flt_exclude_noise": False,
+                 "flt_last_done": False, "flt_max_age": 60, "flt_live": False}.items():
         st.session_state.setdefault(k, v)
+
+    st.sidebar.divider()
+    live = st.sidebar.toggle(
+        "🛰️ Tarik data live", key="flt_live",
+        help="Default: baca dari cache DB (cepat, di-refresh tiap malam). Nyalakan untuk "
+             "menarik data terbaru dari ClickUp/GitLab — lebih lambat, dan untuk memuat "
+             "periode yang lebih panjang dari cache.",
+    )
     deep = st.sidebar.toggle("Deep (cycle time & bottleneck)", key="flt_deep",
                              help="Lebih lambat: 1 API call per task")
     max_age_in = st.sidebar.number_input("Abaikan task basi > N hari (0 = nonaktif)",
@@ -169,7 +179,7 @@ def render_sidebar(base_config) -> dict:
     return {
         "sel_names": sel_names, "since_d": since_d, "until_d": until_d,
         "deep": deep, "max_age": (max_age_in or None), "no_discover": no_discover,
-        "exclude_noise": exclude_noise, "last_done": last_done,
+        "exclude_noise": exclude_noise, "last_done": last_done, "offline": not live,
         "name_to_chapter": name_to_chapter,
     }
 
@@ -184,8 +194,25 @@ def load_data(filters: dict) -> ReportData | None:
             CONFIG_PATH, tuple(filters["sel_names"]),
             filters["since_d"].isoformat(), filters["until_d"].isoformat(),
             filters["deep"], filters["max_age"], filters["no_discover"],
-            filters["exclude_noise"], filters["last_done"],
+            filters["exclude_noise"], filters["last_done"], filters["offline"],
         )
     except Exception as exc:  # noqa: BLE001 — tampilkan error apa pun ke UI
         st.error(f"Gagal menarik data: {exc}")
         return None
+
+
+def coverage_note(data, filters) -> None:
+    """Tampilkan info mode cache + peringatan bila periode melebihi data ter-cache."""
+    if not getattr(data, "offline", False):
+        st.caption("🛰️ Data live (baru ditarik dari ClickUp/GitLab).")
+        return
+    floor = getattr(data, "cache_since", None)
+    if floor and filters["since_d"].isoformat() < floor:
+        st.warning(
+            f"⚠️ Mode cache: data sebelum **{tgl(floor)}** belum tentu lengkap "
+            "(di luar window refresh nightly). Nyalakan **🛰️ Tarik data live** di sidebar "
+            "untuk memuat & menyimpan periode ini."
+        )
+    else:
+        st.caption("📦 Data dari cache DB (di-refresh tiap malam). "
+                   "Nyalakan **🛰️ Tarik data live** untuk data hari ini.")
