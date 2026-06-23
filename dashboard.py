@@ -23,6 +23,7 @@ from dashboard_lib import (
     add_chapter,
     cols,
     coverage_note,
+    engineer_links,
     load_base_config,
     load_data,
     render_roster_editor,
@@ -112,15 +113,6 @@ def util_frame(data: ReportData) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("Skor", na_position="last").reset_index(drop=True)
 
 
-def _open_detail(df: pd.DataFrame, event) -> None:
-    """Baris engineer terpilih di tabel → pindah ke tampilan Detail untuk engineer itu."""
-    rows = event.selection.rows if (event and event.selection) else []
-    if rows:
-        st.session_state["detail_engineer"] = df.iloc[rows[0]]["Engineer"]
-        st.session_state["view"] = VIEW_DETAIL
-        st.rerun()
-
-
 def _slider(label, total, key, default=15):
     hi = max(1, total)
     return st.slider(label, 1, hi, min(default, hi), key=key) if hi > 1 else hi
@@ -149,10 +141,8 @@ def render_overview(data: ReportData, name_to_chapter: dict) -> None:
             st.plotly_chart(topn_bar(uf, "Skor", n, top=False, title=f"{n} skor terendah"), width="stretch")
         with uc2:
             st.plotly_chart(px.histogram(uf, x="Skor", nbins=10, title="Distribusi skor"), width="stretch")
-        st.caption("👆 Klik baris engineer untuk membuka Detail.")
-        ev = st.dataframe(uf, column_config=cols(uf), width="stretch", hide_index=True,
-                          on_select="rerun", selection_mode="single-row", key="util_select")
-        _open_detail(uf, ev)
+        st.caption("🔗 Klik nama engineer untuk membuka Detail.")
+        st.dataframe(engineer_links(uf), column_config=cols(uf), width="stretch", hide_index=True)
     else:
         st.info("Analisis utilisasi tidak aktif untuk filter ini.")
 
@@ -166,10 +156,8 @@ def render_overview(data: ReportData, name_to_chapter: dict) -> None:
         n2 = m3.slider("N", 1, max(1, len(summary)), min(15, len(summary)), key="sum_n") if len(summary) > 1 else 1
         st.plotly_chart(topn_bar(summary, metric, n2, top, f"{'Top' if top else 'Bottom'} {n2} — {metric}"),
                         width="stretch")
-    st.caption("👆 Klik baris engineer untuk membuka Detail.")
-    ev = st.dataframe(summary, column_config=cols(summary), width="stretch", hide_index=True,
-                      on_select="rerun", selection_mode="single-row", key="summary_select")
-    _open_detail(summary, ev)
+    st.caption("🔗 Klik nama engineer untuk membuka Detail.")
+    st.dataframe(engineer_links(summary), column_config=cols(summary), width="stretch", hide_index=True)
 
     if data.has_commit_data:
         st.subheader("🔭 Matriks task vs commit")
@@ -349,6 +337,13 @@ def render_detail(data: ReportData, name_to_chapter: dict) -> None:
 
 
 # ============================================================================ app
+# Klik nama engineer (LinkColumn ?engineer=Nama) → buka Detail untuk engineer itu.
+_qp_eng = st.query_params.get("engineer")
+if _qp_eng:
+    st.session_state["detail_engineer"] = _qp_eng
+    st.session_state["view"] = VIEW_DETAIL
+    del st.query_params["engineer"]
+
 base_config = load_base_config()
 
 h_title, h_team, h_filter, h_view = st.columns([5, 1.4, 1.7, 2.6], vertical_alignment="center")

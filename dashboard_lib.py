@@ -63,13 +63,24 @@ def cols(df: pd.DataFrame) -> dict:
     cfg = {}
     for c in df.columns:
         h = COLUMN_HELP.get(c)
-        if c == "Skor":
+        if c == "Engineer":
+            cfg[c] = st.column_config.LinkColumn(
+                c, help="Klik nama untuk buka detail engineer", display_text=r"\?engineer=(.+)")
+        elif c == "Skor":
             cfg[c] = st.column_config.ProgressColumn(c, help=h, min_value=0, max_value=100, format="%.0f")
         elif c in _NUMERIC:
             cfg[c] = st.column_config.NumberColumn(c, help=h)
         else:
             cfg[c] = st.column_config.TextColumn(c, help=h)
     return cfg
+
+
+def engineer_links(df: pd.DataFrame) -> pd.DataFrame:
+    """Salin df dengan kolom Engineer diubah jadi link query-param (?engineer=Nama)."""
+    d = df.copy()
+    if "Engineer" in d.columns:
+        d["Engineer"] = d["Engineer"].map(lambda n: f"?engineer={n}")
+    return d
 
 
 def add_chapter(df: pd.DataFrame, name_to_chapter: dict) -> pd.DataFrame:
