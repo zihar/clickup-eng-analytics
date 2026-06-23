@@ -122,9 +122,12 @@ def load_base_config():
         st.stop()
 
 
-def render_sidebar(base_config) -> dict:
-    """Render sidebar filter (state ter-share lintas page via key) -> dict pilihan."""
-    st.sidebar.title("⚙️ Filter")
+def render_topbar(base_config) -> dict:
+    """Render bar filter di atas (bukan sidebar) -> dict pilihan. State ter-share via key.
+
+    Hanya filter inti + toggle 'Data live'; opsi lanjutan (deep/discover/noise/last-done)
+    tak relevan di mode cache default, jadi dipakai nilai tetap.
+    """
     name_to_chapter = {e.name: (e.chapter or "(tanpa chapter)") for e in base_config.engineers}
     all_chapters = sorted(set(name_to_chapter.values()))
     # Default awal: tampilkan chapter Golang saja (kalau ada); selain itu fallback ke semua chapter.
@@ -133,54 +136,44 @@ def render_sidebar(base_config) -> dict:
     st.session_state.setdefault("flt_chapters", default_chapters)
     # Sanitasi terhadap perubahan config supaya tak error "value bukan opsi valid".
     st.session_state["flt_chapters"] = [c for c in st.session_state["flt_chapters"] if c in all_chapters]
-    sel_chapters = st.sidebar.multiselect(
-        "Chapter", all_chapters, key="flt_chapters",
-        help="Skor utilisasi dihitung relatif terhadap engineer yang ter-filter (per chapter).",
-    )
-
-    in_chapter = [n for n, ch in name_to_chapter.items() if ch in sel_chapters]
-    st.session_state.setdefault("flt_engineers", in_chapter)
-    st.session_state["flt_engineers"] = [n for n in st.session_state["flt_engineers"] if n in in_chapter]
-    sel_names = st.sidebar.multiselect("Engineer", in_chapter, key="flt_engineers")
 
     today = date.today()
     st.session_state.setdefault("flt_period", (today - timedelta(days=30), today))
-    rng = st.sidebar.date_input("Periode", max_value=today, key="flt_period")
+    st.session_state.setdefault("flt_live", False)
+
+    with st.container(border=True):
+        c1, c2, c3, c4 = st.columns([2, 3, 2.2, 1.4], vertical_alignment="bottom")
+        with c1:
+            sel_chapters = st.multiselect("Chapter", all_chapters, key="flt_chapters",
+                                          placeholder="Semua chapter")
+        in_chapter = [n for n, ch in name_to_chapter.items() if ch in sel_chapters]
+        st.session_state.setdefault("flt_engineers", in_chapter)
+        st.session_state["flt_engineers"] = [n for n in st.session_state["flt_engineers"] if n in in_chapter]
+        with c2:
+            sel_names = st.multiselect("Engineer", in_chapter, key="flt_engineers",
+                                       placeholder="Pilih engineer")
+        with c3:
+            rng = st.date_input("Periode", max_value=today, key="flt_period")
+        with c4:
+            live = st.toggle("🛰️ Data live", key="flt_live",
+                             help="Default baca cache DB (cepat, di-refresh tiap malam). "
+                                  "Nyalakan untuk data terbaru / periode di luar cache.")
+            refresh = st.button("🔄 Refresh", width="stretch")
+
     if isinstance(rng, (tuple, list)) and len(rng) == 2:
         since_d, until_d = rng
     else:
         since_d, until_d = today - timedelta(days=30), today
-
-    for k, v in {"flt_deep": False, "flt_no_discover": False, "flt_exclude_noise": False,
-                 "flt_last_done": False, "flt_max_age": 60, "flt_live": False}.items():
-        st.session_state.setdefault(k, v)
-
-    st.sidebar.divider()
-    live = st.sidebar.toggle(
-        "🛰️ Tarik data live", key="flt_live",
-        help="Default: baca dari cache DB (cepat, di-refresh tiap malam). Nyalakan untuk "
-             "menarik data terbaru dari ClickUp/GitLab — lebih lambat, dan untuk memuat "
-             "periode yang lebih panjang dari cache.",
-    )
-    deep = st.sidebar.toggle("Deep (cycle time & bottleneck)", key="flt_deep",
-                             help="Lebih lambat: 1 API call per task")
-    max_age_in = st.sidebar.number_input("Abaikan task basi > N hari (0 = nonaktif)",
-                                         min_value=0, step=10, key="flt_max_age")
-    no_discover = st.sidebar.toggle("Jangan auto-discover repo", key="flt_no_discover")
-    exclude_noise = st.sidebar.toggle("Filter file noise (+/- baris)", key="flt_exclude_noise",
-                                      help="Lebih lambat: ambil diff tiap commit")
-    last_done = st.sidebar.toggle("Tanggal selesai terakhir", key="flt_last_done",
-                                  help="Query ekstra: kapan tiap engineer terakhir menutup task (lintas periode)")
-
-    if st.sidebar.button("🔄 Refresh data", width="stretch"):
+    if refresh:
         gather_cached.clear()
         st.rerun()
 
     return {
         "sel_names": sel_names, "since_d": since_d, "until_d": until_d,
-        "deep": deep, "max_age": (max_age_in or None), "no_discover": no_discover,
-        "exclude_noise": exclude_noise, "last_done": last_done, "offline": not live,
-        "name_to_chapter": name_to_chapter,
+        "offline": not live, "name_to_chapter": name_to_chapter,
+        # Opsi lanjutan: nilai tetap (tak ada UI-nya lagi).
+        "deep": False, "max_age": 60, "no_discover": False,
+        "exclude_noise": False, "last_done": False,
     }
 
 
